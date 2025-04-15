@@ -1,4 +1,5 @@
 <?php 
+//vyplnit a zmenit soubor na config.php
 //login do stagu
 $username = "prihlasovaciJmeno";
 $password = "heslo";
