@@ -1,0 +1,173 @@
+-- SQL Skript: Vytvoření všech potřebných tabulek
+
+CREATE TABLE IF NOT EXISTS verze (
+    IdVerze INT AUTO_INCREMENT PRIMARY KEY,
+    Nazev VARCHAR(255) NOT NULL,
+    Datum DATE NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS nastaveni (
+    IdNastaveni INT AUTO_INCREMENT PRIMARY KEY,
+    Nazev VARCHAR(255) NOT NULL,
+    Popis TEXT,
+    Hodnota INT NOT NULL DEFAULT 0,
+    refchange TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS cisfakulta (
+    idcis INT AUTO_INCREMENT PRIMARY KEY,
+    zkratka VARCHAR(5),
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS pracoviste (
+    idpracoviste INT PRIMARY KEY,
+    zkratka VARCHAR(7),
+    typpracoviste VARCHAR(2),
+    nadrazenepracoviste VARCHAR(7),
+    nazev VARCHAR(50),
+    aktualnipracoviste INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS predmet (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    zkratka VARCHAR(10),
+    nazev VARCHAR(50),
+    cviciciUcitIdno VARCHAR(200),
+    seminariciUcitIdno VARCHAR(200),
+    prednasejiciUcitIdno VARCHAR(200),
+    vyucovaciJazyky VARCHAR(30),
+    nahrazPredmety VARCHAR(30),
+    rok INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS predmetlast (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    zkratka VARCHAR(10),
+    nazev VARCHAR(50),
+    cviciciUcitIdno VARCHAR(200),
+    seminariciUcitIdno VARCHAR(200),
+    prednasejiciUcitIdno VARCHAR(200),
+    vyucovaciJazyky VARCHAR(30),
+    nahrazPredmety VARCHAR(30),
+    rok INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS roky (
+    rok INT PRIMARY KEY,
+    akademickyrok VARCHAR(10),
+    zvoleny INT
+);
+
+CREATE TABLE IF NOT EXISTS semestr (
+    semestr VARCHAR(3) PRIMARY KEY,
+    popis VARCHAR(15),
+    aktualnisemestr INT
+);
+
+CREATE TABLE IF NOT EXISTS studijniprogram (
+    stprIdno INT PRIMARY KEY,
+    nazev VARCHAR(100),
+    kod VARCHAR(20),
+    platnyod INT,
+    pocetprijimanych VARCHAR(50),
+    stddelka VARCHAR(4),
+    pocetstudentu INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS teachers (
+    id INT(10),
+    name VARCHAR(50),
+    surname VARCHAR(50),
+    ucitIdno INT,
+    iddbversion INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS ucitelpredmety (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ucitIdno INT,
+    predmetzkratka VARCHAR(20),
+    iddbversion INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS ucitelpredmetprirazeni (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    predmetid INT,
+    teacherid INT,
+    typ VARCHAR(15)
+);
+
+CREATE TABLE IF NOT EXISTS ucitelpredmetlast (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    predmetid INT,
+    teacherid INT,
+    typ VARCHAR(15)
+);
+
+CREATE TABLE IF NOT EXISTS errnumber (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ucitIdno INT,
+    IdVerze INT,
+    FOREIGN KEY (IdVerze) REFERENCES verze(IdVerze)
+);
+
+CREATE TABLE IF NOT EXISTS seq_ucitIdno (
+    num INT
+);
+
+-- Výchozí nastavení aktivní verze (pokud není)
+INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota)
+VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0);
+
+
+DROP TABLE cisfakulta;
+    DROP TABLE nastaveni;
+    DROP TABLE pracoviste;
+    DROP TABLE predmet;
+    DROP TABLE predmetlast;
+    DROP TABLE roky;
+    DROP TABLE semestr;
+    DROP TABLE seq_ucitidno;
+    DROP TABLE studijniprogram;
+    DROP TABLE teachers;
+    DROP TABLE ucitelpredmety;
+    DROP TABLE ucitelpredmetlast;
+    DROP TABLE predmetprirazeni;
+    DROP TABLE ucitelpredmety;
+    DROP TABLE predmetlast; 
+    
+--    select * from cisfakulta;
+    
+CREATE TABLE predmet_hodiny (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    predmetId INT NOT NULL,
+    typVyuky INT NOT NULL, 
+    pocetJednotek INT DEFAULT 0,
+    jednotkaId INT,
+    FOREIGN KEY (predmetId) REFERENCES predmet(id),
+    FOREIGN KEY (jednotkaId) REFERENCES vyukove_jednotky(id)
+);
+
+create table typ_vyuky (
+	id INT AUTO_INCREMENT PRIMARY KEY,
+    nazev varchar(20)
+);
+
+CREATE TABLE vyukove_jednotky (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    zkratka VARCHAR(20) UNIQUE NOT NULL,  
+    popis VARCHAR(20)                             
+);

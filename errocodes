@@ -1,0 +1,12 @@
+12.04.2025
+
+Warning: file_get_contents(): SSL: Handshake timed out in C:\xampp\htdocs\BP Website\includes\functions.php on line 591
+
+Warning: file_get_contents(): Failed to enable crypto in C:\xampp\htdocs\BP Website\includes\functions.php on line 591
+
+Warning: file_get_contents(https://stag-ws.utb.cz/ws/services/rest2/predmety/getPredmetyByUcitel?ucitIdno=8318&lang=en&outputFormat=JSON&katedra=%25&rok=%25): Failed to open stream: operation failed in C:\xampp\htdocs\BP Website\includes\functions.php on line 591
+
+Fatal error: Uncaught Error: Call to undefined function insertErrNumber() in C:\xampp\htdocs\BP Website\includes\functions.php:613 Stack trace: #0 C:\xampp\htdocs\BP Website\includes\functions.php(766): getPredmetyUcitel(Object(PDO), 8318) #1 C:\xampp\htdocs\BP Website\pages\insert1.php(71): getUcitele(Object(PDO)) #2 {main} thrown in C:\xampp\htdocs\BP Website\includes\functions.php on line 613
+
+Comment: Pri dalsim spusteni nenastalo
+

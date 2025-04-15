@@ -1,0 +1,61 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+#navbar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 200px;
+    background-color: #333;
+    color: #fff;
+    padding-top: 20px;
+    transition: transform 0.3s ease-in-out;
+}
+#navbar.hidden {
+    transform: translateX(-200px);
+}
+#navbar ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+#navbar ul li {
+    padding: 10px 0;
+    text-align: center;
+}
+#navbar ul li a {
+    text-decoration: none;
+    color: #fff;
+    display: block;
+}
+#content {
+    margin-left: 200px;
+    padding: 20px;
+    transition: margin-left 0.3s ease-in-out;
+}
+#content h1 {
+text-align: center;
+}
+#content.shifted {
+    margin-left: 0;
+}
+#toggleButton {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 999;
+}
+.rounded-border {
+    border: 2px solid #6af1e8ed; /* Border width and color */
+    border-radius: 10px; /* Adjust the border-radius for rounded corners */
+    padding: 10px; /* Optional: Add padding inside the div */
+    /* Add any additional styling here */
+}
+
+#rest {
+    align-items: center;
+}
