@@ -33,8 +33,8 @@ if (isset($_POST['update'])) {
 }
 
 // ODEBRAT (nulovat učitele)
-if (isset($_POST['delete'])) {
-    foreach ($_POST['delete'] as $assignmentId => $v) {
+if (isset($_POST['odebrat'])) {
+    foreach ($_POST['odebrat'] as $assignmentId => $v) {
         $stmt = $pdo->prepare("UPDATE ucitelpredmetprirazeni
                                SET teacherid = NULL, podil = 0
                                WHERE id = ? AND IdVerze = ?");

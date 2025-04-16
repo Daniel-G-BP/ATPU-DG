@@ -64,7 +64,7 @@ foreach ($assignments as $row) {
     echo "</select></td>";
     echo "<td>
             <button type='submit' name='update[{$assignmentId}]'>Uložit</button>
-            <button type='submit' name='odebrat[{$row['predmetid']}]'>Odebrat</button>
+            <button type='submit' name='odebrat[{$assignmentId}]'>Odebrat</button>
             <button type='submit' name='smazat[{$assignmentId}]'>Smazat řádek</button>
             <button type='submit' name='kopirovat[{$assignmentId}]'>Kopírovat řádek</button>
           </td>";

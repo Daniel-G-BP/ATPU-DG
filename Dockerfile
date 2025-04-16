@@ -1,4 +1,5 @@
 FROM php:8.2-apache
+COPY php.ini /usr/local/etc/php/
 
 # Povolení modulu rewrite pro Apache
 RUN a2enmod rewrite

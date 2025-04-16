@@ -4,196 +4,6 @@ function myMessage(){
     echo "hello world!";
 }
 
-// function onInit($pdo){
-//     try {
-//         deleteAll($pdo);
-//     }
-//     catch (Exception $e) {
-//         echo "nothing to delete";
-//     }
-//     $query = "create table roky(
-//         rok int primary key,
-//         akademickyrok varchar(10),
-//         zvoleny int);
-
-//         INSERT INTO roky (rok, akademickyrok, zvoleny) VALUES (2023, '2023/2024', 1);
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2024, '2024/2025');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2025, '2025/2026');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2026, '2026/2027');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2027, '2027/2028');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2028, '2028/2029');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2029, '2029/2030');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2030, '2030/2031');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2031, '2031/2032');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2032, '2032/2033');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2033, '2033/2034');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2034, '2034/2035');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2035, '2035/2036');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2036, '2036/2037');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2037, '2037/2038');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2038, '2038/2039');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2039, '2039/2040');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2040, '2040/2041');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2041, '2041/2042');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2042, '2042/2043');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2043, '2043/2044');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2044, '2044/2045');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2045, '2045/2046');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2046, '2046/2047');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2047, '2047/2048');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2048, '2048/2049');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2049, '2049/2050');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2050, '2050/2051');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2051, '2051/2052');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2052, '2052/2053');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2053, '2053/2054');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2054, '2054/2055');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2055, '2055/2056');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2056, '2056/2057');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2057, '2057/2058');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2058, '2058/2059');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2059, '2059/2060');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2060, '2060/2061');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2061, '2061/2062');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2062, '2062/2063');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2063, '2063/2064');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2064, '2064/2065');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2065, '2065/2066');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2066, '2066/2067');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2067, '2067/2068');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2068, '2068/2069');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2069, '2069/2070');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2070, '2070/2071');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2071, '2071/2072');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2072, '2072/2073');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2073, '2073/2074');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2074, '2074/2075');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2075, '2075/2076');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2076, '2076/2077');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2077, '2077/2078');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2078, '2078/2079');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2079, '2079/2080');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2080, '2080/2081');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2081, '2081/2082');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2082, '2082/2083');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2083, '2083/2084');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2084, '2084/2085');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2085, '2085/2086');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2086, '2086/2087');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2087, '2087/2088');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2088, '2088/2089');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2089, '2089/2090');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2090, '2090/2091');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2091, '2091/2092');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2092, '2092/2093');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2093, '2093/2094');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2094, '2094/2095');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2095, '2095/2096');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2096, '2096/2097');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2097, '2097/2098');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2098, '2098/2099');
-//         INSERT INTO roky (rok, akademickyrok) VALUES (2099, '2099/2100');
-//         create table semestr(
-//             semestr varchar(3) primary key,
-//             popis varchar(15),
-//             aktualnisemestr int,
-//             IdVerze INT);
-//         insert into semestr (semestr, popis) values ('ZS', 'Zimni semestr');
-//         insert into semestr (semestr, popis) values ('LS', 'Letni semestr');
-//         create table pracoviste(
-//             idpracoviste int primary key,
-//             zkratka varchar(7),
-//             typpracoviste varchar(2),
-//             nadrazenepracoviste varchar(7),
-//             nazev varchar(50),
-//             aktualnipracoviste int,
-//             IdVerze INT);
-//         create table cisfakulta(
-//             idcis int primary key auto_increment,
-//             zkratka varchar(5),
-//             IdVerze INT);
-//         insert into cisfakulta (zkratka) values ('FAI');
-//         insert into cisfakulta (zkratka) values ('FAM');
-//         insert into cisfakulta (zkratka) values ('FLK');
-//         insert into cisfakulta (zkratka) values ('FMK');
-//         insert into cisfakulta (zkratka) values ('FHS');
-//         insert into cisfakulta (zkratka) values ('FT');
-//         insert into cisfakulta (zkratka) values ('IMS');
-//         create table predmet(
-//             id int primary key auto_increment,
-//             zkratka varchar(10),
-//             nazev varchar(50),
-//             rok int,
-//             cviciciUcitIdno varchar(200),
-//             seminariciUcitIdno varchar(200),
-//             prednasejiciUcitIdno varchar(200),
-//             vyucovaciJazyky varchar(30),
-//             nahrazPredmety varchar(30),
-//             IdVerze INT);
-//         create table studijniprogram (
-//             stprIdno int primary key,
-//             nazev varchar(100),
-//             kod varchar(20),
-//             platnyod int,
-//             pocetprijimanych varchar(50),
-//             stddelka varchar(4),
-//             pocetstudentu int,
-//             IdVerze INT
-//             );
-//         create table teachers (
-//             id int(10),
-//             name varchar(50),
-//             surname varchar(50),
-//             ucitIdno int,
-//             iddbversion int,
-//             IdVerze INT);
-//         create table ucitelpredmety(
-//             id int primary key auto_increment,
-//             ucitIdno int,
-//             predmetzkratka varchar(20),
-//             iddbversion int,
-//             IdVerze INT);
-//         create table predmetlast(
-//             id int primary key auto_increment,
-//             zkratka varchar(10),
-//             nazev varchar(50),
-//             cviciciUcitIdno varchar(200),
-//             seminariciUcitIdno varchar(200),
-//             prednasejiciUcitIdno varchar(200),
-//             vyucovaciJazyky varchar(30),
-//             nahrazPredmety varchar(30),
-//             rok int,
-//             IdVerze INT);
-//         create table ucitelpredmetprirazeni(
-//             id int primary key auto_increment,
-//             predmetid int,
-//             teacherid int,
-//             IdVerze INT,
-//             typ varchar(15) #Cvicici, prednasejici, seminarici ucitelpredmety
-//             );
-//         create table ucitelpredmetlast(
-//             id int primary key auto_increment,
-//             predmetid int,
-//             teacherid int,
-//             IdVerze INT,
-//             typ varchar(15) #Cvicici, prednasejici, seminarici ucitelpredmety
-//             );    
-//         create table seq_ucitIdno(
-//             num int);
-//         CREATE TABLE verze (
-//             IdVerze INT AUTO_INCREMENT PRIMARY KEY,
-//             Nazev VARCHAR(255) NOT NULL,
-//             Datum DATE NOT NULL
-//         );
-//         INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota)
-//         VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0);
-//         ";
-//     $stmt = $pdo->prepare($query);
-//     $stmt->execute();
-// //    echo $query;
-//     echo nl2br("Deleted succesfully\n"); 
-
-// }
 
 function onInit(PDO $pdo) {
     // Smazání všech tabulek bezpečně
@@ -285,7 +95,7 @@ function onInit(PDO $pdo) {
             IdVerze INT
         )");
 
-        $pdo->exec("CREATE TABLE ucitelpredmety (
+        $pdo->exec("CREATE TABLE ucitelPredmety (
             id INT PRIMARY KEY AUTO_INCREMENT,
             ucitIdno INT,
             predmetzkratka VARCHAR(20),
@@ -399,18 +209,38 @@ function onInit(PDO $pdo) {
             predmetid INT NOT NULL,
             jazykid INT NOT NULL)");
 
+        try {
+            $pdo->exec("CREATE VIEW vwPredmetJazyk as 
+            SELECT DISTINCT predmetid, jazykid 
+            FROM predmet_jazyk");
+        }
+        catch (PDOException $e) {
+            echo "Chyba při vytváření VIEW, pravděpodobně již existuje: " . $e->getMessage();
+        }
+
 
         // Aktivní verze - základní záznam
-        $pdo->exec("INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) 
-                    VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0);
-                    INSERT INTO nastaveni values (2, 'AktivniRok', 'ID aktivního roku', 2025);
-                    INSERT INTO nastaveni values (3, 'AktivniKatedra', 'ID aktivní katedry', 0);
-                    INSERT INTO vyukove_jednotky (id, zkratka, popis) values (1, 'HOD/SEM', 'Hodiny za semestr');
-                    INSERT INTO vyukove_jednotky (id, zkratka, popis) values (2, 'HOD/TYD', 'Hodiny za týden');
-                    INSERT INTO seq_ucitIdnoExternista (id, cislo) VALUES (1, 0);
-                    INSERT INTO jazyk (id, zkratka, popis) VALUES (2, 'AJ', 'Angličtina');
-                    INSERT INTO jazyk (id, zkratka, popis) VALUES (1, 'ČJ', 'Čeština');
-                    ");
+        // $pdo->exec("INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) 
+        //             VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0);
+        //             INSERT INTO nastaveni values (2, 'AktivniRok', 'ID aktivního roku', 2025);
+        //             INSERT INTO nastaveni values (3, 'AktivniKatedra', 'ID aktivní katedry', 0);
+        //             INSERT INTO vyukove_jednotky (id, zkratka, popis) values (1, 'HOD/SEM', 'Hodiny za semestr');
+        //             INSERT INTO vyukove_jednotky (id, zkratka, popis) values (2, 'HOD/TYD', 'Hodiny za týden');
+        //             INSERT INTO seq_ucitIdnoExternista (id, cislo) VALUES (1, 0);
+        //             INSERT INTO jazyk (id, zkratka, popis) VALUES (2, 'AJ', 'Angličtina');
+        //             INSERT INTO jazyk (id, zkratka, popis) VALUES (1, 'ČJ', 'Čeština');
+        //             ");
+
+        //pro docker
+        $pdo->exec("INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0)");
+        $pdo->exec("INSERT INTO nastaveni VALUES (2, 'AktivniRok', 'ID aktivního roku', 2025)");
+        $pdo->exec("INSERT INTO nastaveni VALUES (3, 'AktivniKatedra', 'ID aktivní katedry', 0)");
+        $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (1, 'HOD/SEM', 'Hodiny za semestr')");
+        $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (2, 'HOD/TYD', 'Hodiny za týden')");
+        $pdo->exec("INSERT INTO seq_ucitIdnoExternista (id, cislo) VALUES (1, 0)");
+        $pdo->exec("INSERT INTO jazyk (id, zkratka, popis) VALUES (2, 'AJ', 'Angličtina')");
+        $pdo->exec("INSERT INTO jazyk (id, zkratka, popis) VALUES (1, 'ČJ', 'Čeština')");
+
 
         echo "<p style='color: green;'>Všechny tabulky byly úspěšně vytvořeny a inicializovány.</p>";
 
@@ -562,7 +392,7 @@ function onInit_Insert($pdo){
             ucitIdno int,
             iddbversion int,
             IdVerze INT);
-        create table ucitelpredmety(
+        create table ucitelPredmety(
             id int primary key auto_increment,
             ucitIdno int,
             predmetzkratka varchar(20),
@@ -584,14 +414,14 @@ function onInit_Insert($pdo){
             predmetid int,
             teacherid int,
             IdVerze INT,
-            typ varchar(15) #Cvicici, prednasejici, seminarici ucitelpredmety
+            typ varchar(15) #Cvicici, prednasejici, seminarici ucitelPredmety
             );
         create table ucitelpredmetlast(
             id int primary key auto_increment,
             predmetid int,
             teacherid int,
             IdVerze INT,
-            typ varchar(15) #Cvicici, prednasejici, seminarici ucitelpredmety
+            typ varchar(15) #Cvicici, prednasejici, seminarici ucitelPredmety
             );    
         create table seq_ucitIdno(
             num int);
@@ -699,7 +529,7 @@ function getPredmetyByKatedra($pdo, $katedra){
             // $ints = parseStringToIntegers($predmet['cviciciUcitIdno']);
 
             //import jazyků
-            $jazyky = explode(',', $predmet['vyucovaciJazyky']);
+            $jazyky = explode(',', is_string($predmet['vyucovaciJazyky']) ? $predmet['vyucovaciJazyky'] : '');
             $predmetId = $pdo->lastInsertId();
             foreach ($jazyky as $jazyk) {
                 $jazyk = trim($jazyk);
@@ -744,7 +574,7 @@ function getPredmetyByKatedraLast($pdo, $katedra){
             insertPredmetLast($pdo, $predmet['zkratka'], $predmet['nazev'], $predmet['cviciciUcitIdno'], $predmet['seminariciUcitIdno'], $predmet['prednasejiciUcitIdno'], $predmet['vyucovaciJazyky'], $predmet['rok']);
             // $ints = parseStringToIntegers($predmet['cviciciUcitIdno']);
             // echo $ints;
-            $jazyky = explode(',', $predmet['vyucovaciJazyky']);
+            $jazyky = explode(',', is_string($predmet['vyucovaciJazyky']) ? $predmet['vyucovaciJazyky'] : '');
             $predmetId = $pdo->lastInsertId();
             foreach ($jazyky as $jazyk) {
                 $jazyk = trim($jazyk);
@@ -777,9 +607,17 @@ function getYear($pdo){
                         ON r.rok=n.hodnota
                         ;");
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
-    $year = (int) $result['rok'];
-//    echo $year;
-    return $year;
+
+    if (!$result || !isset($result['rok'])) {
+        return null; // nebo nějaká výchozí hodnota, např. 0 nebo aktuální rok
+    }
+
+    return (int) $result['rok'];
+
+
+    //     $year = (int) $result['rok'];
+// //    echo $year;
+//     return $year;
 }
 
 function getSemestr($pdo){
@@ -1055,10 +893,10 @@ function insertCurrentY($pdo, $predmetid, $teacherid, $typ) {
 //     DROP TABLE seq_ucitidno;
 //     DROP TABLE studijniprogram;
 //     DROP TABLE teachers;
-//     DROP TABLE ucitelpredmety;
+//     DROP TABLE ucitelPredmety;
 //     DROP TABLE ucitelpredmetlast;
 //     DROP TABLE predmetprirazeni;
-//     DROP TABLE ucitelpredmety;
+//     DROP TABLE ucitelPredmety;
 //     DROP TABLE predmetlast; 
 //     DROP TABLE ucitelpredmetprirazeni;
 //     DROP TABLE verze;
@@ -1075,7 +913,7 @@ function deleteAll($pdo){
         'ucitelpredmetprirazeni',
         'ucitelpredmetlast',
         'teachers',
-        'ucitelpredmety',
+        'ucitelPredmety',
         'predmet_hodiny',
         'predmetlast',
         'predmet',
@@ -1092,7 +930,7 @@ function deleteAll($pdo){
         'typ_vyuky',
         'rozvrhova_akce',
         'rozvrhova_akce_ucitel',
-        'seq_ucitidnoexternista',
+        'seq_ucitIdnoExternista',
         'jazyk',
         'predmet_jazyk'
     ];
@@ -1125,13 +963,24 @@ function aktualnirok($pdo, $rok){
 //    echo nl2br("Deleted succesfully\n"); 
 }
 
-function aktualniSemestr($pdo, $semestr){
-        $query = "UPDATE semestr SET aktualnisemestr=0;
-                  UPDATE semestr SET aktualnisemestr=1 WHERE semestr='" . $semestr . "';";
-        $stmt = $pdo->prepare($query);
-        $stmt->execute();
-        echo $query;
-        echo nl2br("Deleted succesfully\n"); 
+//s dockerem nefunguje vice update v jednom query
+// function aktualniSemestr($pdo, $semestr){
+//         $query = "UPDATE semestr SET aktualnisemestr=0;
+//                   UPDATE semestr SET aktualnisemestr=1 WHERE semestr='" . $semestr . "';";
+//         $stmt = $pdo->prepare($query);
+//         $stmt->execute();
+//         echo $query;
+//         echo nl2br("Deleted succesfully\n"); 
+// }
+
+function aktualniSemestr($pdo, $semestr) {
+    // Nejprve vynulujeme všechny
+    $stmt1 = $pdo->prepare("UPDATE semestr SET aktualnisemestr = 0");
+    $stmt1->execute();
+
+    // Pak nastavíme zvolený semestr jako aktuální
+    $stmt2 = $pdo->prepare("UPDATE semestr SET aktualnisemestr = 1 WHERE semestr = :semestr");
+    $stmt2->execute([':semestr' => $semestr]);
 }
 
 function setKatedra($pdo, $katedra){
@@ -1176,7 +1025,7 @@ function teachedlastyear($pdo){
 }
 
 function stringToIntArray($string) {
-    $parts = explode(',', $string);
+    $parts = explode(',', is_string($string) ? $string : '');
    
     $intArray = array();
     
@@ -1511,7 +1360,7 @@ function gerRozvrhoveAkceLastYearKatedra($pdo) {
         echo nl2br("\n ÚSPĚŠNĚ importována rozvrhová akce: " . $predmet . ", nazev: " . $nazev . ", typ: " . $ra['typAkce']);
         // // Zpracování učitelů + podílu
 
-            $ucitIds = explode(',', $ra['vsichniUciteleUcitIdno']);
+            $ucitIds = explode(',', is_string($ra['vsichniUciteleUcitIdno']) ? $ra['vsichniUciteleUcitIdno'] : '');
             $podilyStr = $ra['vsichniUciteleJmenaTitulySPodily'];
             preg_match_all("/\((\d+)\)/", $podilyStr, $matches);
             $podily = $matches[1];
@@ -1587,7 +1436,7 @@ function assignTeachersFromRozvrh($pdo) {
         $zkratka = $predmet['zkratka'];
 
         // Získání všech jazyků daného předmětu
-        $stmtJazyky = $pdo->prepare("SELECT jazykid FROM vwpredmetjazyk WHERE predmetid = ?");
+        $stmtJazyky = $pdo->prepare("SELECT jazykid FROM vwPredmetJazyk WHERE predmetid = ?");
         $stmtJazyky->execute([$predmetId]);
         $jazykIds = $stmtJazyky->fetchAll(PDO::FETCH_COLUMN);
 
