@@ -43,7 +43,7 @@ $stmt->execute([$ucitelId]);
 $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 echo "<table border='1' cellpadding='5'>";
-echo "<tr><th>Předmět</th><th>Typ</th><th>Jazyk</th><th>Hodin týdně</th><th>Podíl (%)</th><th>Reálný úvazek</th></tr>";
+echo "<tr><th>Předmět</th><th>Typ</th><th>Jazyk</th><th>Rozsah hodin</th><th>Podíl (%)</th><th>Reálný úvazek</th></tr>";
 
 foreach ($data as $row) {
     $hodin = 0;

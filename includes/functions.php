@@ -83,6 +83,7 @@ function onInit(PDO $pdo) {
             pocetprijimanych VARCHAR(50),
             stddelka VARCHAR(4),
             pocetstudentu INT,
+            idForma INT,
             IdVerze INT
         )");
 
@@ -92,6 +93,7 @@ function onInit(PDO $pdo) {
             surname VARCHAR(50),
             ucitIdno INT,
             iddbversion INT,
+            idCisTituly INT,
             IdVerze INT
         )");
 
@@ -128,6 +130,11 @@ function onInit(PDO $pdo) {
             num INT
         )");
 
+        $pdo->exec("CREATE TABLE cistituly (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            zkratka varchar(10)
+        )");
+
         $pdo->exec("CREATE TABLE verze (
             IdVerze INT AUTO_INCREMENT PRIMARY KEY,
             Nazev VARCHAR(255) NOT NULL,
@@ -138,7 +145,8 @@ function onInit(PDO $pdo) {
             IdNastaveni INT PRIMARY KEY,
             Nazev VARCHAR(100),
             Popis TEXT,
-            Hodnota INT
+            Hodnota INT,
+            HodnotaChar VARCHAR(100)
         )");
 
         $pdo->exec("CREATE TABLE errnumber (
@@ -150,6 +158,12 @@ function onInit(PDO $pdo) {
             id INT AUTO_INCREMENT PRIMARY KEY,
             zkratka varchar(7),
             popis varchar(20)
+        )");
+
+        $pdo->exec("CREATE TABLE cviceni_max_studenti (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            idUcitelPredmetPrirazeni INT,
+            pocet INT
         )");
 
         $pdo->exec("CREATE TABLE vyukove_jednotky (
@@ -173,6 +187,15 @@ function onInit(PDO $pdo) {
         $pdo->exec("CREATE TABLE typ_vyuky (
             id INT AUTO_INCREMENT PRIMARY KEY,
             nazev VARCHAR(20)
+        )");    
+
+        $pdo->exec("CREATE TABLE kontakt (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            idTeacher INT,
+            email VARCHAR(250),
+            telefon VARCHAR(250),
+            poznamka VARCHAR(250),
+            idVerze INT
         )");    
 
         $pdo->exec("CREATE TABLE rozvrhova_akce (
@@ -233,13 +256,36 @@ function onInit(PDO $pdo) {
 
         //pro docker
         $pdo->exec("INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0)");
-        $pdo->exec("INSERT INTO nastaveni VALUES (2, 'AktivniRok', 'ID aktivního roku', 2025)");
-        $pdo->exec("INSERT INTO nastaveni VALUES (3, 'AktivniKatedra', 'ID aktivní katedry', 0)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (2, 'AktivniRok', 'ID aktivního roku', 2025)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (3, 'AktivniKatedra', 'ID aktivní katedry', 0)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar) VALUES (11, 'PredmetPrez', 'Zacatek zkratky predmetu pro prezencnci studium', 'AP')");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar) VALUES (12, 'PredmetKomb', 'Zacatek zkratky predmetu pro kombinovane studium', 'AK')");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar) VALUES (13, 'PredmetAng', 'Zacatek zkratky predmetu pro anglickou vyuku', 'AE')");
         $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (1, 'HOD/SEM', 'Hodiny za semestr')");
         $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (2, 'HOD/TYD', 'Hodiny za týden')");
         $pdo->exec("INSERT INTO seq_ucitIdnoExternista (id, cislo) VALUES (1, 0)");
         $pdo->exec("INSERT INTO jazyk (id, zkratka, popis) VALUES (2, 'AJ', 'Angličtina')");
         $pdo->exec("INSERT INTO jazyk (id, zkratka, popis) VALUES (1, 'ČJ', 'Čeština')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Bc.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('BcA.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Mgr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('MgA.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Ing.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Ing. arch.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('MUDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('MDDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('MVDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('PhDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('JUDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('RNDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('PharmDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('ThDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('PaedDr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('ThLic.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Ph.D.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Th.D.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Dr.')");
+        $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('CSc.')");
 
 
         echo "<p style='color: green;'>Všechny tabulky byly úspěšně vytvořeny a inicializovány.</p>";
@@ -391,6 +437,7 @@ function onInit_Insert($pdo){
             surname varchar(50),
             ucitIdno int,
             iddbversion int,
+            idCisTituly int,
             IdVerze INT);
         create table ucitelPredmety(
             id int primary key auto_increment,
@@ -641,7 +688,8 @@ function getKatedra($pdo){
 function getStudijniProgram($pdo, $fakulta){
     $rok = getYear($pdo);
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/programy/getStudijniProgramy?kod=%25&pouzePlatne=true&fakulta=" . $fakulta . "&outputFormat=JSON&rok=" . $rok;
-    
+    echo nl2br("\nURL API getPredmetInfo:" . $api_url . "\n");;
+
     $response = file_get_contents($api_url);
 
     if ($response === FALSE) {
@@ -654,7 +702,7 @@ function getStudijniProgram($pdo, $fakulta){
         }
 
         foreach ($data['programInfo'] as $stp) {
-            insertStudijniProgram($pdo, $stp['stprIdno'], $stp['nazev'], $stp['kod'], $stp['platnyOd'], $stp['pocetPrijimanych'], $stp['stdDelka']);
+            insertStudijniProgram($pdo, $stp['stprIdno'], $stp['nazev'], $stp['kod'], $stp['platnyOd'], $stp['pocetPrijimanych'], $stp['stdDelka'], $stp['forma']);
             // echo $teacher['jmeno'] . " " . $teacher['prijmeni'];
         }
 
@@ -715,15 +763,24 @@ function insertUcitel($pdo ,$name, $surname, $ucitIdno){
     }
 }
 
-function insertStudijniProgram($pdo, $stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka){
+function insertStudijniProgram($pdo, $stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $forma){
     try{
         $stmtVerze = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
         $stmtVerze->execute();
         $IdVerze = $stmtVerze->fetchColumn();
 
-        $query = "INSERT INTO studijniprogram (stprIdno, nazev, kod, platnyod, pocetprijimanych, stddelka, IdVerze) VALUES (?, ?, ?, ?, ?, ?, ?);";
+        //forma 1 Prezenční, 2 Kombinovaná, 0 nevyplněno
+        if($forma=="Prezenční"){
+            $forma=1;
+        }
+        else if ($forma=="Kombinovaná"){
+            $forma=2;
+        }
+        else $forma=0;
+
+        $query = "INSERT INTO studijniprogram (stprIdno, nazev, kod, platnyod, pocetprijimanych, stddelka, idForma, IdVerze) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $IdVerze]);
+        $stmt->execute([$stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $forma, $IdVerze]);
 
         echo nl2br("Studijni program uspesne nahran: " . $stprIdno . $nazev . "\n");
     } catch(PDOException $e) {
@@ -932,7 +989,10 @@ function deleteAll($pdo){
         'rozvrhova_akce_ucitel',
         'seq_ucitIdnoExternista',
         'jazyk',
-        'predmet_jazyk'
+        'predmet_jazyk',
+        'cviceni_max_studenti',
+        'kontakt',
+        'cistituly'
     ];
 
     foreach ($tables as $table) {
@@ -1238,7 +1298,7 @@ function getPredmetInfo($pdo, $katedra){
     $year = getYear($pdo);
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/predmety/getPredmetyByKatedraFullInfo?semestr=LS&outputFormat=JSON&katedra=" . $katedra . "&rok=" . $year;
     $response = file_get_contents($api_url);
-    echo nl2br("\nURL API:" . $api_url . "\n");;
+    echo nl2br("\nURL API getPredmetInfo:" . $api_url . "\n");;
 
     if ($response === FALSE) {
         echo "error in connection";
@@ -1499,5 +1559,4 @@ function getSetUcitIdnoExternista($pdo){
     
     return $cislo;
 }
-
 
