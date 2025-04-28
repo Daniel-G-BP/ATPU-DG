@@ -21,7 +21,6 @@ http://localhost:8080
 
 Práce s aplikací:
 1. Inicializace databáze
-
 Na hlavní stránce klikni na tlačítko „Start“.
 To vytvoří základní strukturu databáze a naplní ji daty.
 Poznámka: Tlačítko je nutné zmáčknout při prvním spuštění aplikace, jinak nebudou fungovat další části.
