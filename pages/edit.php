@@ -33,6 +33,7 @@
             <li><a href="insert1.php">Insert do DB</a></li>
             <li><a href="result-counting.php">Manuální Editace</a></li>
             <li><a href="overview-ucitele.php">Přehled učitelé</a></li>
+            <li><a href="sttings.php">Nastavní</a></li>
         </ul>
     </div>
     <div class="rounded-border">

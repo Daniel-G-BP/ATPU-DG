@@ -27,6 +27,7 @@
             <li><a href="pages/insert1.php">Insert do DB</a></li>
             <li><a href="pages/result-counting.php">Manuální Editace</a></li>
             <li><a href="pages/overview-ucitele.php">Přehled kantoři</a></li>
+            <li><a href="pages/settings.php">Nastavní</a></li>
         </ul>
     </div>
 
