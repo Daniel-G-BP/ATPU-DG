@@ -1,13 +1,55 @@
+<?php
+require_once '../includes/functions-overview-ucitele.php';
+require_once '../includes/dbh.inc.php';
+$pdo = connectToDatabase();
+$teachers = getTeachersData($pdo);
+?>
+
 <!DOCTYPE html>
-<html>
+<html lang="cs">
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="../stylepages/stylepage-result-counting.css">
-    <link rel="stylesheet" href="../stylepage.css">
+    <title>Přehled učitelů</title>
+    <link rel="stylesheet" href="../stylepages/stylepage-overview-ucitele.css">
+    <link rel="stylesheet" href="../stylepages/stylepage-result-counting.css"> 
+    <link rel="stylesheet" href="../stylepage.css"> 
     <script src="../webfunc.js"></script>
 </head>
 <body>
-<div id="navbar">
+    <div class="main-content">
+        <h1>Seznam učitelů</h1>
+        <table class="result-table">
+            <thead>
+                <tr>
+                    <th>Jméno</th>
+                    <th>Příjmení</th>
+                    <th>Telefon</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($teachers as $teacher): ?>
+                    <tr>
+                        <td><?= htmlspecialchars($teacher['name'] ?? '') ?></td>
+                        <td><?= htmlspecialchars($teacher['surname'] ?? '') ?></td>
+                        <td><?= htmlspecialchars($teacher['telefon'] ?? '') ?></td>
+                        <td>
+                            <button type="button"
+                                onclick="window.open(
+                                    'uvazek-ucitele.php?id=<?= (int)$teacher['id_ucitel'] ?>',
+                                    'UvazekUcitele',
+                                    'width=800,height=600,resizable=yes,scrollbars=yes'
+                                )">
+                                Zobrazit úvazek
+                            </button>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="navbar" style="display: none;">
         <ul>
             <h1 style="text-align: center;">Menu</h1>
             <li><a href="../index.php">Main</a></li>
@@ -19,26 +61,7 @@
             <li><a href="settings.php">Nastavní</a></li>
         </ul>
     </div>
-
-<div class="main-content">
-<?php
-require_once '../includes/dbh.inc.php';
-$pdo = connectToDatabase();
-
-echo "<h1>Seznam učitelů</h1>";
-echo "<ul>";
-
-$stmt = $pdo->query("SELECT id, name, surname FROM teachers ORDER BY surname");
-while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    $id = $row['id'];
-    $jmeno = htmlspecialchars($row['surname'] . ' ' . $row['name']);
-    echo "<li><a href=\"#\" onclick=\"window.open('uvazek-ucitele.php?id=$id', 'Ucitel$id', 'width=1000,height=700'); return false;\">$jmeno</a></li>";
-
-}
-
-echo "</ul>";
-?>
-</div>
+    <button id="toggleButton" onclick="toggleNavbarRC()">Zobrazit Menu</button>
 
 </body>
 </html>

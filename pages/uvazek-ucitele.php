@@ -1,72 +1,97 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="../stylepages/stylepage-result-counting.css">
-    <link rel="stylesheet" href="../stylepage.css">
-</head>
-<body>
-<div class="main-content">
 <?php
 require_once '../includes/dbh.inc.php';
 $pdo = connectToDatabase();
 
-$ucitelId = $_GET['id'] ?? null;
+// Získání a kontrola ID učitele z URL
+$ucitelId = isset($_GET['id']) && is_numeric($_GET['id']) ? (int)$_GET['id'] : null;
 if (!$ucitelId) {
-    echo "Učitel nenalezen.";
+    echo "<p>Neplatné nebo chybějící ID učitele.</p>";
     exit;
 }
 
-$stmt = $pdo->prepare("SELECT name, surname FROM teachers WHERE id = ?");
-$stmt->execute([$ucitelId]);
-$ucitel = $stmt->fetch(PDO::FETCH_ASSOC);
+// Získání aktivní verze
+$verzeId = $pdo->query("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'")->fetchColumn();
+if (!$verzeId) {
+    echo "<p>Chybí aktivní verze v tabulce 'nastaveni'.</p>";
+    exit;
+}
+
+// Načtení údajů o učiteli
+$ucitelDotaz = $pdo->prepare("SELECT name, surname FROM teachers WHERE id = ?");
+$ucitelDotaz->execute([$ucitelId]);
+$ucitel = $ucitelDotaz->fetch();
+
 if (!$ucitel) {
-    echo "Učitel nenalezen.";
+    echo "<p>Učitel s ID $ucitelId nebyl nalezen.</p>";
     exit;
 }
 
-echo "<h1>Úvazek: {$ucitel['surname']} {$ucitel['name']}</h1>";
-
-$query = "
+// Načtení dat o úvazku
+$sql = "
 SELECT 
-    p.zkratka, p.nazev, upp.typ, j.popis AS jazyk, upp.podil,
-    ph.pocetJednotekPrednaska, ph.pocetJednotekCviceni, ph.pocetJednotekSeminar
+    p.zkratka, 
+    p.nazev, 
+    upp.typ, 
+    j.popis AS jazyk, 
+    upp.podil,
+    ph.pocetJednotekPrednaska, 
+    ph.pocetJednotekCviceni, 
+    ph.pocetJednotekSeminar
 FROM ucitelpredmetprirazeni upp
 JOIN predmet p ON upp.predmetid = p.id
 LEFT JOIN jazyk j ON upp.jazyk = j.id
 LEFT JOIN predmet_hodiny ph ON p.id = ph.predmetid
-WHERE upp.teacherid = ? AND upp.IdVerze = (SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze')
-ORDER BY p.zkratka, upp.typ";
-
-$stmt = $pdo->prepare($query);
-$stmt->execute([$ucitelId]);
+WHERE upp.teacherid = ? AND upp.IdVerze = ?
+ORDER BY p.zkratka, upp.typ
+";
+$stmt = $pdo->prepare($sql);
+$stmt->execute([$ucitelId, $verzeId]);
 $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-echo "<table border='1' cellpadding='5'>";
-echo "<tr><th>Předmět</th><th>Typ</th><th>Jazyk</th><th>Rozsah hodin</th><th>Podíl (%)</th><th>Reálný úvazek</th></tr>";
-
-foreach ($data as $row) {
-    $hodin = 0;
-    switch ($row['typ']) {
-        case 'P': $hodin = $row['pocetJednotekPrednaska']; break;
-        case 'C': $hodin = $row['pocetJednotekCviceni']; break;
-        case 'S': $hodin = $row['pocetJednotekSeminar']; break;
-    }
-    $hodin = floatval($hodin);
-    $uvazek = round(($hodin * $row['podil']) / 100.0, 2);
-
-    echo "<tr>
-        <td>{$row['zkratka']} – {$row['nazev']}</td>
-        <td>{$row['typ']}</td>
-        <td>{$row['jazyk']}</td>
-        <td>{$hodin}</td>
-        <td>{$row['podil']}</td>
-        <td><strong>{$uvazek}</strong></td>
-    </tr>";
-}
-
-echo "</table>";
 ?>
-</div>
+
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <title>Úvazek učitele</title>
+    <link rel="stylesheet" href="../stylepages/stylepage-overview-ucitele.css">
+</head>
+<body>
+    <div class="main-content">
+        <h1>Úvazek učitele: <?= htmlspecialchars($ucitel['name']) . ' ' . htmlspecialchars($ucitel['surname']) ?></h1>
+
+        <?php if (empty($data)): ?>
+            <p>Pro tohoto učitele nebyl nalezen žádný úvazek.</p>
+        <?php else: ?>
+            <table class="result-table">
+                <thead>
+                    <tr>
+                        <th>Zkratka</th>
+                        <th>Název</th>
+                        <th>Typ</th>
+                        <th>Jazyk</th>
+                        <th>Podíl</th>
+                        <th>Přednáška</th>
+                        <th>Cvičení</th>
+                        <th>Seminář</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($data as $row): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($row['zkratka']) ?></td>
+                            <td><?= htmlspecialchars($row['nazev']) ?></td>
+                            <td><?= htmlspecialchars($row['typ']) ?></td>
+                            <td><?= htmlspecialchars($row['jazyk'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($row['podil']) ?></td>
+                            <td><?= htmlspecialchars($row['pocetJednotekPrednaska']) ?></td>
+                            <td><?= htmlspecialchars($row['pocetJednotekCviceni']) ?></td>
+                            <td><?= htmlspecialchars($row['pocetJednotekSeminar']) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
 </body>
 </html>

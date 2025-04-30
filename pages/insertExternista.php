@@ -29,10 +29,10 @@
             $ucitIdno = -getSetUcitIdnoExternista($pdo); //externistu poznáme podle záporného ucitidno
             $stmtVerze = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
             $stmtVerze->execute();
-            $verze = $stmtVerze->fetchColumn();
+            $idVerze = $stmtVerze->fetchColumn();
 
             $stmt = $pdo->prepare("INSERT INTO teachers (name, surname, ucitIdno, IdVerze, idCisTituly) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$name, $surname, $ucitIdno, $verze, $titulId]);
+            $stmt->execute([$name, $surname, $ucitIdno, $idVerze, $titulId]);
             $stmt = $pdo->prepare("INSERT INTO kontakt (idTeacher, email, telefon, poznamka, IdVerze) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$ucitIdno, $email, $phone, $other, $idVerze]);
 
