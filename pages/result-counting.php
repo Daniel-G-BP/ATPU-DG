@@ -16,7 +16,7 @@ require_once '../includes/dbh.inc.php';
 $pdo = connectToDatabase();
 
 echo "<form method='post' action='../includes/functions-result-counting.php'>";
-echo "<table border='1' class='editable-table'>";
+echo "<table border='1' class='editable-table' id='tableJavascript'>";
 echo "<tr><th>Předmět</th><th>Zkratka</th><th>Typ</th><th>Podíl (%)</th><th>Jazyk</th><th>Učitel</th><th>Změnit učitele</th><th>Akce</th></tr>";
 
 
@@ -39,7 +39,7 @@ foreach ($assignments as $row) {
     echo "<td>{$row['nazev']}</td>";
     echo "<td>{$row['zkratka']}</td>";
     echo "<td>
-            <select name='typ[{$assignmentId}]'>
+            <select name='typ[{$assignmentId}]' class='typ-vyuky'>
                 <option value='P' " . ($row['typ'] === 'P' ? "selected" : "") . ">Přednáška</option>
                 <option value='C' " . ($row['typ'] === 'C' ? "selected" : "") . ">Cvičení</option>
                 <option value='S' " . ($row['typ'] === 'S' ? "selected" : "") . ">Seminář</option>
@@ -87,5 +87,41 @@ echo "</form>";
         </ul>
     </div>
     <button id="toggleButton" onclick="toggleNavbarRC()">Zobrazit Menu</button>
+
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+    const typSelects = document.querySelectorAll('select.typ-vyuky');
+
+    typSelects.forEach(select => {
+        updateRowColor(select); // barva při načtení
+
+        select.addEventListener('change', () => {
+        updateRowColor(select); // barva při změně
+        });
+    });
+
+    function updateRowColor(selectElement) {
+        const row = selectElement.closest('tr');
+        const value = selectElement.value;
+
+        switch (value) {
+        case 'P': // Přednáška
+            row.style.backgroundColor = '#d1e7dd'; // světle zelená
+            break;
+        case 'C': // Cvičení
+            row.style.backgroundColor = '#cff4fc'; // světle modrá
+            break;
+        case 'S': // Seminář
+            row.style.backgroundColor = '#fce7cf'; // světle oranžová
+            break;
+        default:
+            row.style.backgroundColor = ''; // výchozí
+        }
+    }
+    });
+    </script>
+
+
 
 </body>
