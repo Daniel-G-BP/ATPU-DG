@@ -31,10 +31,11 @@
     margin: 0 2px;
 }
 
-.editable-table button[name^='odebrat'] {
+.editable-table button[id^='odebrat'] {
     background-color: #dc3545;
 }
 
-.editable-table button[name^='smazat'] {
+.editable-table button[id^='smazat'] {
     background-color: #dc3545;
 }
+

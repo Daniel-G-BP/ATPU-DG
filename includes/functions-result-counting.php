@@ -2,69 +2,151 @@
 require_once 'dbh.inc.php';
 $pdo = connectToDatabase();
 
-function getAktivniVerze($pdo) {
-    $stmt = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
-    $stmt->execute();
-    return $stmt->fetchColumn();
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $id = $_POST['id'] ?? null;
+    $typ = $_POST['typ'] ?? null;
+    $jazyk = $_POST['jazyk'] ?? null;
+    $ucitel = $_POST['ucitel'] ?? null;
+    $podil = $_POST['podil'] ?? null;
+    $max_studentu = $_POST['max_studentu'] ?? null;
+    $action = $_POST['action'] ?? null;
 
-$verze = getAktivniVerze($pdo);
+    if (!$id || !$action) {
+        // Nesmí se nic vypsat, jinak header nefunguje
+        header("Location: ../pages/result-counting.php?error=missing");
+        exit;
+    }
 
-// UPDATE záznamu
-if (isset($_POST['update'])) {
-    foreach ($_POST['update'] as $assignmentId => $v) {
-        $typ = $_POST['typ'][$assignmentId];
-        $ucitIdno = $_POST['ucitel'][$assignmentId];
-        $jazyk = $_POST['jazyk'][$assignmentId];
-        $podil = $_POST['podil'][$assignmentId] ?? 100;
+    switch ($action) {
+        case 'update':
+            if ($typ !== 'C') {
+                $max_studentu = null;
+            }
 
-        $stmt = $pdo->prepare("SELECT id FROM teachers WHERE ucitIdno = ?");
-        $stmt->execute([$ucitIdno]);
-        $teacher = $stmt->fetch(PDO::FETCH_ASSOC);
+            $stmt = $pdo->prepare("
+                UPDATE ucitelpredmetprirazeni
+                SET typ = :typ,
+                    jazyk = :jazyk,
+                    teacherid = :ucitel,
+                    podil = :podil,
+                    max_pocet_studentu = :max_studentu
+                WHERE id = :id
+            ");
+            $stmt->execute([
+                ':typ' => $typ,
+                ':jazyk' => $jazyk,
+                ':ucitel' => $ucitel,
+                ':podil' => $podil,
+                ':max_studentu' => $max_studentu,
+                ':id' => $id
+            ]);
 
-        if ($teacher) {
-            $teacherid = $teacher['id'];
-            $stmt = $pdo->prepare("UPDATE ucitelpredmetprirazeni
-                                   SET teacherid = ?, typ = ?, podil = ?, jazyk = ?
-                                   WHERE id = ? AND IdVerze = ?");
-            $stmt->execute([$teacherid, $typ, $podil, $jazyk, $assignmentId, $verze]);
-        }
+            header("Location: ../pages/result-counting.php?updated=$id");
+            exit;
+
+        case 'odebrat':
+            $pdo->prepare("UPDATE ucitelpredmetprirazeni SET teacherid = NULL WHERE id = ?")->execute([$id]);
+            header("Location: ../pages/result-counting.php?cleared=$id");
+            exit;
+
+        case 'smazat':
+            $pdo->prepare("DELETE FROM ucitelpredmetprirazeni WHERE id = ?")->execute([$id]);
+            header("Location: ../pages/result-counting.php?deleted=$id");
+            exit;
+
+        case 'kopirovat':
+            $stmt = $pdo->prepare("SELECT * FROM ucitelpredmetprirazeni WHERE id = ?");
+            $stmt->execute([$id]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($row) {
+                unset($row['id']);
+                $columns = implode(", ", array_keys($row));
+                $placeholders = implode(", ", array_fill(0, count($row), '?'));
+
+                $pdo->prepare("INSERT INTO ucitelpredmetprirazeni ($columns) VALUES ($placeholders)")
+                    ->execute(array_values($row));
+            }
+
+            header("Location: ../pages/result-counting.php?copied=$id");
+            exit;
+
+        default:
+            header("Location: ../pages/result-counting.php?error=unknown_action");
+            exit;
     }
 }
 
-// ODEBRAT (nulovat učitele)
-if (isset($_POST['odebrat'])) {
-    foreach ($_POST['odebrat'] as $assignmentId => $v) {
-        $stmt = $pdo->prepare("UPDATE ucitelpredmetprirazeni
-                               SET teacherid = NULL, podil = 0
-                               WHERE id = ? AND IdVerze = ?");
-        $stmt->execute([$assignmentId, $verze]);
-    }
-}
 
-// SMAZAT záznam
-if (isset($_POST['smazat'])) {
-    foreach ($_POST['smazat'] as $assignmentId => $v) {
-        $stmt = $pdo->prepare("DELETE FROM ucitelpredmetprirazeni WHERE id = ? AND IdVerze = ?");
-        $stmt->execute([$assignmentId, $verze]);
-    }
-}
 
-// KOPÍROVAT záznam bez učitele
-if (isset($_POST['kopirovat'])) {
-    foreach ($_POST['kopirovat'] as $assignmentId => $v) {
-        $typ = $_POST['typ'][$assignmentId];
-        $jazyk = $_POST['jazyk'][$assignmentId];
-        $stmt = $pdo->prepare("SELECT predmetid FROM ucitelpredmetprirazeni WHERE id = ?");
-        $stmt->execute([$assignmentId]);
-        $predmetid = $stmt->fetchColumn();
+// <!-- <?php
+// require_once 'dbh.inc.php';
+// $pdo = connectToDatabase();
 
-        $stmt = $pdo->prepare("INSERT INTO ucitelpredmetprirazeni (predmetid, teacherid, typ, podil, IdVerze, jazyk)
-                               VALUES (?, NULL, ?, 0, ?, ?)");
-        $stmt->execute([$predmetid, $typ, $verze, $jazyk]);
-    }
-}
+// if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-header("Location: ../pages/result-counting.php?success=1");
-exit;
-?>
+//     // === UPDATE ===
+//     if (isset($_POST['update'])) {
+//         $id = array_key_first($_POST['update']);
+
+//         $typ = $_POST['typ'][$id] ?? '';
+//         $jazyk = $_POST['jazyk'][$id] ?? '';
+//         $podil = $_POST['podil'][$id] ?? null;
+//         $ucitel = $_POST['ucitel'][$id] ?? null;
+
+//         $stmt = $pdo->prepare("
+//             UPDATE ucitelpredmetprirazeni
+//             SET typ = :typ,
+//                 jazyk = :jazyk,
+//                 podil = :podil,
+//                 teacherid = :ucitel
+//             WHERE id = :id
+//         ");
+//         $stmt->execute([
+//             ':typ' => $typ,
+//             ':jazyk' => $jazyk,
+//             ':podil' => $podil,
+//             ':ucitel' => $ucitel,
+//             ':id' => $id
+//         ]);
+
+//         header("Location: ../pages/result-counting.php?updated=$id");
+//         exit;
+//     }
+
+//     // === SMAZAT ===
+//     if (isset($_POST['smazat'])) {
+//         $id = array_key_first($_POST['smazat']);
+//         $pdo->prepare("DELETE FROM ucitelpredmetprirazeni WHERE id = ?")->execute([$id]);
+//         header("Location: ../pages/result-counting.php?deleted=$id");
+//         exit;
+//     }
+
+//     // === ODEBRAT UČITELE ===
+//     if (isset($_POST['odebrat'])) {
+//         $id = array_key_first($_POST['odebrat']);
+//         $pdo->prepare("UPDATE ucitelpredmetprirazeni SET teacherid = NULL WHERE id = ?")->execute([$id]);
+//         header("Location: ../pages/result-counting.php?cleared=$id");
+//         exit;
+//     }
+
+//     // === KOPÍROVAT ===
+//     if (isset($_POST['kopirovat'])) {
+//         $id = array_key_first($_POST['kopirovat']);
+//         $stmt = $pdo->prepare("SELECT * FROM ucitelpredmetprirazeni WHERE id = ?");
+//         $stmt->execute([$id]);
+//         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+//         if ($row) {
+//             unset($row['id']);
+//             $columns = implode(", ", array_keys($row));
+//             $placeholders = implode(", ", array_fill(0, count($row), '?'));
+//             $pdo->prepare("INSERT INTO ucitelpredmetprirazeni ($columns) VALUES ($placeholders)")
+//                 ->execute(array_values($row));
+//         }
+
+//         header("Location: ../pages/result-counting.php?copied=$id");
+//         exit;
+//     }
+// }
+// ?> 

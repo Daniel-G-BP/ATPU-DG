@@ -1,78 +1,119 @@
 <?php
 require_once '../includes/dbh.inc.php';
-?>
-
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="../stylepages/stylepage-result-counting.css"> 
-    <link rel="stylesheet" href="../stylepage.css"> 
-    <script src="../webfunc.js"></script>
-</head>
-
-<body>
-<?php
 $pdo = connectToDatabase();
 
-echo "<form method='post' action='../includes/functions-result-counting.php'>";
-echo "<table border='1' class='editable-table' id='tableJavascript'>";
-echo "<tr><th>Předmět</th><th>Zkratka</th><th>Typ</th><th>Podíl (%)</th><th>Jazyk</th><th>Učitel</th><th>Změnit učitele</th><th>Akce</th></tr>";
+$jazyky = $pdo->query("SELECT * FROM jazyk")->fetchAll(PDO::FETCH_ASSOC);
+$ucitele = $pdo->query("SELECT * FROM teachers order by name, surname")->fetchAll(PDO::FETCH_ASSOC);
 
-
-$stmt = $pdo->prepare("SELECT upp.id, p.id AS predmetid, p.nazev, p.zkratka, t.ucitIdno, t.name, t.surname, upp.typ, upp.podil, upp.jazyk as jazykid
-                       FROM predmet p
-                       JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid
-                       LEFT JOIN teachers t ON upp.teacherid = t.id
-                       WHERE upp.IdVerze = (SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze')
-                       ORDER BY p.zkratka, upp.id");
+$stmt = $pdo->prepare("
+    SELECT upp.id, p.nazev, p.zkratka, t.name, t.surname,
+           upp.typ, upp.podil, upp.jazyk as jazykid,
+           upp.max_pocet_studentu, upp.teacherid
+    FROM predmet p
+    JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid
+    LEFT JOIN teachers t ON upp.teacherid = t.id
+    WHERE upp.IdVerze = (SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze')
+    ORDER BY p.zkratka, upp.id
+");
 $stmt->execute();
 $assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Načti všechny učitele a jazyky pro dropdown
-$teachers = $pdo->query("SELECT ucitIdno, name, surname FROM teachers ORDER BY surname")->fetchAll(PDO::FETCH_ASSOC);
-$jazyky = $pdo->query("SELECT id, popis FROM jazyk ORDER BY popis")->fetchAll(PDO::FETCH_ASSOC);
-
-foreach ($assignments as $row) {
-    $assignmentId = $row['id'];
-    echo "<tr>";
-    echo "<td>{$row['nazev']}</td>";
-    echo "<td>{$row['zkratka']}</td>";
-    echo "<td>
-            <select name='typ[{$assignmentId}]' class='typ-vyuky'>
-                <option value='P' " . ($row['typ'] === 'P' ? "selected" : "") . ">Přednáška</option>
-                <option value='C' " . ($row['typ'] === 'C' ? "selected" : "") . ">Cvičení</option>
-                <option value='S' " . ($row['typ'] === 'S' ? "selected" : "") . ">Seminář</option>
-            </select>
-          </td>";
-    echo "<td><input type='number' name='podil[{$assignmentId}]' value='{$row['podil']}' min='0' max='100' step='0.01'></td>";
-
-    echo "<td>
-            <select name='jazyk[{$assignmentId}]'>";
-        foreach ($jazyky as $jazyk) {
-            $selected = ($jazyk['id'] == $row['jazykid']) ? "selected" : "";
-            echo "<option value='{$jazyk['id']}' $selected>{$jazyk['popis']}</option>";
-    }
-    echo "</select></td>";
-
-    echo "<td>{$row['surname']} {$row['name']}</td>";
-    echo "<td><select name='ucitel[{$assignmentId}]'>";
-    foreach ($teachers as $t) {
-        $selected = ($t['ucitIdno'] == $row['ucitIdno']) ? "selected" : "";
-        echo "<option value='{$t['ucitIdno']}' $selected>{$t['surname']} {$t['name']}</option>";
-    }
-    echo "</select></td>";
-    echo "<td>
-            <button type='submit' name='update[{$assignmentId}]'>Uložit</button>
-            <button type='submit' name='odebrat[{$assignmentId}]'>Odebrat</button>
-            <button type='submit' name='smazat[{$assignmentId}]'>Smazat řádek</button>
-            <button type='submit' name='kopirovat[{$assignmentId}]'>Kopírovat řádek</button>
-          </td>";
-    echo "</tr>";
-}
-echo "</table>";
-echo "</form>";
+$barvaPozadi = [
+    'P' => '#d1e7dd',
+    'C' => '#fce7cf',
+    'S' => '#cff4fc'
+];
 ?>
+
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Počítání výsledků</title>
+  <link rel="stylesheet" href="../stylepages/stylepage-overview-ucitele.css">
+  <link rel="stylesheet" href="../stylepages/stylepage-result-counting.css"> 
+  <link rel="stylesheet" href="../stylepage.css"> 
+  <script src="../webfunc.js"></script>
+</head>
+<body>
+
+    <h1>Počítání výsledků</h1>
+
+    <table class="editable-table">
+    <thead>
+        <tr>
+        <th>Předmět</th>
+        <th>Zkratka</th>
+        <th>Typ výuky</th>
+        <th>Podíl</th>
+        <th>Jazyk</th>
+        <th>Učitel</th>
+        <th>Max. počet</th>
+        <th>Akce</th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php foreach ($assignments as $row): ?>
+        <tr style="background-color: <?= $barvaPozadi[$row['typ']] ?? '' ?>">
+            <form method="POST" action="../includes/functions-result-counting.php">
+            <input type="hidden" name="id" value="<?= $row['id'] ?>">
+
+            <td><?= htmlspecialchars($row['nazev']) ?></td>
+            <td><?= htmlspecialchars($row['zkratka']) ?></td>
+
+            <td>
+                <select name="typ" class="typ-vyuky">
+                <option value="P" <?= $row['typ'] === 'P' ? 'selected' : '' ?>>Přednáška</option>
+                <option value="C" <?= $row['typ'] === 'C' ? 'selected' : '' ?>>Cvičení</option>
+                <option value="S" <?= $row['typ'] === 'S' ? 'selected' : '' ?>>Seminář</option>
+                </select>
+            </td>
+
+            <td>
+                <input type="number" name="podil" value="<?= $row['podil'] ?>" min="0" max="100" step="0.01">
+            </td>
+
+            <td>
+                <select name="jazyk">
+                <?php foreach ($jazyky as $jazyk): ?>
+                    <option value="<?= $jazyk['id'] ?>" <?= $jazyk['id'] == $row['jazykid'] ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($jazyk['popis']) ?>
+                    </option>
+                <?php endforeach; ?>
+                </select>
+            </td>
+
+            <td>
+                <select name="ucitel">
+                <?php foreach ($ucitele as $ucitel): ?>
+                    <option value="<?= $ucitel['id'] ?>" <?= $ucitel['id'] == $row['teacherid'] ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($ucitel['name'] . ' ' . $ucitel['surname']) ?>
+                    </option>
+                <?php endforeach; ?>
+                </select>
+            </td>
+
+            <td>
+                <select name="max_studentu" class="max-studentu-select" <?= $row['typ'] !== 'C' ? 'disabled' : '' ?>>
+                <option value="24" <?= $row['max_pocet_studentu'] == 24 ? 'selected' : '' ?>>24</option>
+                <option value="12" <?= $row['max_pocet_studentu'] == 12 ? 'selected' : '' ?>>12</option>
+                <option value="1"  <?= $row['max_pocet_studentu'] == 1  ? 'selected' : '' ?>>X</option>
+                </select>
+            </td>
+
+            <td>
+                <button type="submit" name="action" value="update">Uložit</button>
+                <button type="submit" name="action" value="odebrat" id="odebrat">Odebrat</button>
+                <button type="submit" name="action" value="smazat" id="smazat">Smazat</button>
+                <button type="submit" name="action" value="kopirovat">Kopírovat</button>
+            </td>
+            </form>
+        </tr>
+        <?php endforeach; ?>
+    </tbody>
+    </table>
+
+
 
     <div id="navbar" style="display: none;">
         <ul>
@@ -87,41 +128,6 @@ echo "</form>";
         </ul>
     </div>
     <button id="toggleButton" onclick="toggleNavbarRC()">Zobrazit Menu</button>
-
-
-    <script>
-    document.addEventListener('DOMContentLoaded', () => {
-    const typSelects = document.querySelectorAll('select.typ-vyuky');
-
-    typSelects.forEach(select => {
-        updateRowColor(select); // barva při načtení
-
-        select.addEventListener('change', () => {
-        updateRowColor(select); // barva při změně
-        });
-    });
-
-    function updateRowColor(selectElement) {
-        const row = selectElement.closest('tr');
-        const value = selectElement.value;
-
-        switch (value) {
-        case 'P': // Přednáška
-            row.style.backgroundColor = '#d1e7dd'; // světle zelená
-            break;
-        case 'C': // Cvičení
-            row.style.backgroundColor = '#cff4fc'; // světle modrá
-            break;
-        case 'S': // Seminář
-            row.style.backgroundColor = '#fce7cf'; // světle oranžová
-            break;
-        default:
-            row.style.backgroundColor = ''; // výchozí
-        }
-    }
-    });
-    </script>
-
-
-
+    <script src="../js/result-counting.js"></script>
 </body>
+</html>

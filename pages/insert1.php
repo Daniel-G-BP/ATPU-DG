@@ -45,7 +45,10 @@
         $stmt = $pdo->prepare("UPDATE nastaveni SET Hodnota = ? WHERE Nazev = 'AktivniVerze'");
         $stmt->execute([$newVerzeId]);
 
-        echo "<p style='color: green;'>Vytvořena a nastavena nová verze: <strong>$verzeNazev</strong></p>";
+        $stmt = $pdo->prepare("INSERT INTO teachers (name, surname, ucitIdno, idVerze) VALUES ('__', 'empty', 0, ?)");
+        $stmt->execute([$newVerzeId]);
+
+                echo "<p style='color: green;'>Vytvořena a nastavena nová verze: <strong>$verzeNazev</strong></p>";
 }
 
         

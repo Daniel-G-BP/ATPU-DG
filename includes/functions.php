@@ -123,6 +123,7 @@ function onInit(PDO $pdo) {
             jazyk INT,
             typ VARCHAR(7),
             podil FLOAT DEFAULT 100,
+            max_pocet_studentu INT NULL,
             IdVerze INT
         )");
 
@@ -286,6 +287,7 @@ function onInit(PDO $pdo) {
         $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Th.D.')");
         $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('Dr.')");
         $pdo->exec("INSERT INTO cistituly (zkratka) VALUES ('CSc.')");
+
 
 
         echo "<p style='color: green;'>Všechny tabulky byly úspěšně vytvořeny a inicializovány.</p>";
