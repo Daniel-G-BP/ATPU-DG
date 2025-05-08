@@ -84,7 +84,19 @@ function onInit(PDO $pdo) {
             stddelka VARCHAR(4),
             pocetstudentu INT,
             idForma INT,
+            typ INT,
+            jazyk INT,
             IdVerze INT
+        )");
+
+        $pdo->exec("CREATE TABLE rocniky_studijniho_programu (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            stprIdno INT NOT NULL,
+            rocnik INT NOT NULL,
+            jazyk INT NOT NULL,
+            idForma INT NOT NULL,
+            idVerze INT NOT NULL,
+            pocetStudentu INT DEFAULT NULL 
         )");
 
         $pdo->exec("CREATE TABLE teachers (
@@ -704,9 +716,9 @@ function getStudijniProgram($pdo, $fakulta){
         }
 
         foreach ($data['programInfo'] as $stp) {
-            insertStudijniProgram($pdo, $stp['stprIdno'], $stp['nazev'], $stp['kod'], $stp['platnyOd'], $stp['pocetPrijimanych'], $stp['stdDelka'], $stp['forma']);
+            insertStudijniProgram($pdo, $stp['stprIdno'], $stp['nazev'], $stp['kod'], $stp['platnyOd'], $stp['pocetPrijimanych'], $stp['stdDelka'], $stp['forma'], $stp['typ'], $stp['jazyk']);
             // echo $teacher['jmeno'] . " " . $teacher['prijmeni'];
-        }
+        } // přidat ještě ['typ'] (Bakalářský/Navazující (Ing) /Doktorský)
 
     }
 }
@@ -765,7 +777,7 @@ function insertUcitel($pdo ,$name, $surname, $ucitIdno){
     }
 }
 
-function insertStudijniProgram($pdo, $stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $forma){
+function insertStudijniProgram($pdo, $stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $forma, $typ, $jazyk){
     try{
         $stmtVerze = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
         $stmtVerze->execute();
@@ -780,14 +792,46 @@ function insertStudijniProgram($pdo, $stprIdno, $nazev, $kod, $platnyod, $pocetp
         }
         else $forma=0;
 
-        $query = "INSERT INTO studijniprogram (stprIdno, nazev, kod, platnyod, pocetprijimanych, stddelka, idForma, IdVerze) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+                //forma 1 Bakalářský, 2 Navazující, 0 nevyplněno
+        if($typ=="Bakalářský"){
+            $typ=1;
+        }
+        else if ($typ=="Navazující"){
+            $typ=2;
+        }
+        else $typ=3;
+
+        if($jazyk=="Čeština"){
+            $jazyk=1;
+        }
+        else if ($jazyk=="Angličtina"){
+            $jazyk=2;
+        }
+        else $jazyk=0;
+
+        $query = "INSERT INTO studijniprogram (stprIdno, nazev, kod, platnyod, pocetprijimanych, stddelka, idForma, typ, jazyk, IdVerze) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $forma, $IdVerze]);
+        $stmt->execute([$stprIdno, $nazev, $kod, $platnyod, $pocetprijimanych, $stddelka, $forma, $typ, $jazyk, $IdVerze]);
 
         echo nl2br("Studijni program uspesne nahran: " . $stprIdno . $nazev . "\n");
+
+        insertRocnikySP($pdo, $stprIdno, $stddelka, $forma, $jazyk);
     } catch(PDOException $e) {
         echo "error: " . $e->getMessage();
     }
+}
+
+//insert ročníků podle vstupních dat ze studijních programů
+function insertRocnikySP($pdo, $stprIdno, $stddelka, $forma, $jazyk){
+    $query = "INSERT INTO rocniky_studijniho_programu (stprIdno, rocnik, idForma, idVerze, jazyk) VALUES (?, ?, ?, ?, ?)";
+    $stmt = $pdo->prepare($query);
+    $idVerze=getAktivniVerze($pdo);
+
+    for ($rok = 1; $rok <= $stddelka; $rok++) {
+        $stmt->execute([$stprIdno, $rok, $forma, $idVerze, $jazyk]);
+        echo nl2br("Vložen ročník: " . $rok . "., formy: " . $forma . ", stprIdno: " . $stprIdno . ", jazyk: " . $jazyk . "\n");
+    }
+     
 }
 
 function insertPredmetyByUcitel($pdo, $zkratka, $ucitIdno){
@@ -994,7 +1038,8 @@ function deleteAll($pdo){
         'predmet_jazyk',
         'cviceni_max_studenti',
         'kontakt',
-        'cistituly'
+        'cistituly',
+        'rocniky_studijniho_programu'
     ];
 
     foreach ($tables as $table) {
