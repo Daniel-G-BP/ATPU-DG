@@ -42,6 +42,10 @@ $teachers = getTeachersData($pdo);
                                 )">
                                 Zobrazit úvazek
                             </button>
+                            <form method="get" action="/pages/export-uvazek.php" style="display:inline;">
+                                <input type="hidden" name="teacherId" value="<?= (int)$teacher['id_ucitel'] ?>">
+                                <button type="submit">Export Excel</button>
+                            </form>
                         </td>
                     </tr>
                 <?php endforeach; ?>

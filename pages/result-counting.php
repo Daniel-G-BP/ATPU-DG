@@ -1,11 +1,41 @@
 <?php
 require_once '../includes/dbh.inc.php';
+require_once '../includes/functions.php';
 $pdo = connectToDatabase();
+
+// pro filtrování
+// Získat aktivní verzi
+$verze = getAktivniVerze($pdo);
+
+// Získání všech kateder (pracovišť) pro danou verzi
+$katedry = $pdo->prepare("SELECT idpracoviste, zkratka FROM pracoviste WHERE IdVerze = ?");
+$katedry->execute([$verze]);
+$katedry = $katedry->fetchAll(PDO::FETCH_ASSOC);
+
+// Získání vybrané katedry z URL nebo formuláře
+$vybranaKatedra = $_GET['katedra'] ?? '';
+if (!empty($vybranaKatedra)) {
+    $stmt = $pdo->prepare("UPDATE nastaveni SET hodnota = ? WHERE nazev = 'ResCountKatedra'");
+    $stmt->execute([$vybranaKatedra]);
+}
 
 $jazyky = $pdo->query("SELECT * FROM jazyk")->fetchAll(PDO::FETCH_ASSOC);
 $ucitele = $pdo->query("SELECT * FROM teachers order by name, surname")->fetchAll(PDO::FETCH_ASSOC);
 
-$stmt = $pdo->prepare("
+// $stmt = $pdo->prepare("
+//     SELECT upp.id, p.nazev, p.zkratka, t.name, t.surname,
+//            upp.typ, upp.podil, upp.jazyk as jazykid,
+//            upp.max_pocet_studentu, upp.teacherid
+//     FROM predmet p
+//     JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid
+//     LEFT JOIN teachers t ON upp.teacherid = t.id
+//     WHERE upp.IdVerze = (SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze')
+//     ORDER BY p.zkratka, upp.id
+// ");
+// $stmt->execute();
+
+// nový dotaz
+$sql = "
     SELECT upp.id, p.nazev, p.zkratka, t.name, t.surname,
            upp.typ, upp.podil, upp.jazyk as jazykid,
            upp.max_pocet_studentu, upp.teacherid
@@ -13,9 +43,18 @@ $stmt = $pdo->prepare("
     JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid
     LEFT JOIN teachers t ON upp.teacherid = t.id
     WHERE upp.IdVerze = (SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze')
-    ORDER BY p.zkratka, upp.id
-");
-$stmt->execute();
+";
+
+if ($vybranaKatedra !== '') {
+    $sql .= " AND p.idPracoviste = ?";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$vybranaKatedra]);
+} else {
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute();
+}
+//
+
 $assignments = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $barvaPozadi = [
@@ -39,6 +78,25 @@ $barvaPozadi = [
 
     <h1>Počítání výsledků</h1>
 
+    <form method="GET" style="margin-bottom: 20px;">
+        <label for="katedra">Filtrovat dle katedry:</label>
+        <select name="katedra" id="katedra" onchange="this.form.submit()">
+            <option value="">-- Všechny katedry --</option>
+            <?php foreach ($katedry as $kat): ?>
+                <option value="<?= $kat['idpracoviste'] ?>" <?= $kat['idpracoviste'] == $vybranaKatedra ? 'selected' : '' ?>>
+                    <?= htmlspecialchars($kat['zkratka']) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+    </form>
+    <?php
+    $katedra = getAktualniKatedraForResultCount($pdo);
+    if ($katedra) {
+        echo "<p><strong>Zvolená katedra:</strong> " . htmlspecialchars($katedra['zkratka']) . " – " . htmlspecialchars($katedra['nazev']) . "</p>";
+        } else {
+            echo "<p><strong>Žádná katedra není nastavena.</strong></p>";
+        }
+    ?>
     <table class="editable-table">
     <thead>
         <tr>

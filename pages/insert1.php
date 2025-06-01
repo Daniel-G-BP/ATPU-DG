@@ -59,7 +59,7 @@
             getStudijniProgram($pdo, $fakulta);
         }
 
-        if(isset($_POST['predmety'])){
+        if(isset($_POST['predmet'])){
             $katedra = $_POST['katedra'];
             setKatedra($pdo, $katedra);
             //gerRozvrhoveAkceLastYearKatedra($pdo);
@@ -70,6 +70,10 @@
             gerRozvrhoveAkceLastYearKatedra($pdo); // musi byt spusteny za getUcitele
             //insertTeacherAssingByLastYear($pdo);
             assignTeachersFromRozvrh($pdo);
+        }
+
+        if(isset($_POST['predmetyAll'])){
+            insertAllKatedry($pdo);
         }
 
         if(isset($_POST['x'])){
@@ -93,6 +97,10 @@
         //pro test
         if(isset($_POST['RozvrhAkce'])){
             assignTeachersFromRozvrh($pdo);
+        }
+
+        if(isset($_POST['vycistitPredmetJazyk'])){
+            vycistitPredmetJazyk($pdo);
         }
         
         
@@ -180,9 +188,10 @@
             <input type="submit" name="load" value="Zvolit">
         </form>
 
-        <p>Načíst předměty katedry:</p>
+        <!-- <p>Načíst předměty jedné katedry:</p> -->
+        <span> <p>Načíst předměty jedné katedry:</p>
         <form method="post">
-            <select name="katedra">
+                <select name="katedra">
                 <option value="">Vyberte...</option>
                 <?php
                 $stmt = $pdo->query("SELECT zkratka, nazev FROM pracoviste 
@@ -193,9 +202,18 @@
                 }
                 ?>
             </select>
-            <input type="submit" name="predmety" value="Zvolit">
+            <input type="submit" name="predmet" value="Zvolit">
         </form>
+        <p> nebo nahrát všechny katedry: </p>
+        <form method="post">
+               <input type="submit" name="predmetyAll" value="Nahrát vše">
+        </form>
+        
+        </span>
 
+        <form method="post">
+               <input type="submit" name="vycistitPredmetJazyk" value="Smazat dva jazyky, nechat češtinu">
+        </form>
         <!-- Pro test:
 
         <form method="post">

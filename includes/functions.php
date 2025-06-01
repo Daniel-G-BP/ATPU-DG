@@ -69,8 +69,9 @@ function onInit(PDO $pdo) {
             prednasejiciUcitIdno VARCHAR(200),
             vyucovaciJazyky VARCHAR(30),
             nahrazPredmety VARCHAR(30),
+            idPracoviste INT,
             IdVerze INT
-        )");
+        )"); // addded idPracoviště FK
 
         $pdo->exec("CREATE TABLE predmetlast LIKE predmet");
 
@@ -106,8 +107,11 @@ function onInit(PDO $pdo) {
             ucitIdno INT,
             iddbversion INT,
             idCisTituly INT,
+            titulPred VARCHAR(30), 
+            titulZa VARCHAR(30),
+            idPracoviste INT, 
             IdVerze INT
-        )");
+        )"); //add fk pracoviště 
 
         $pdo->exec("CREATE TABLE ucitelPredmety (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -159,12 +163,14 @@ function onInit(PDO $pdo) {
             Nazev VARCHAR(100),
             Popis TEXT,
             Hodnota INT,
-            HodnotaChar VARCHAR(100)
+            HodnotaChar VARCHAR(100),
+            IdVerze INT
         )");
 
         $pdo->exec("CREATE TABLE errnumber (
             id INT AUTO_INCREMENT PRIMARY KEY,
-            ucitIdno INT
+            ucitIdno INT,
+            idVerze INT
         )");
 
         $pdo->exec("CREATE TABLE jazyk (
@@ -268,12 +274,13 @@ function onInit(PDO $pdo) {
         //             ");
 
         //pro docker
-        $pdo->exec("INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0)");
-        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (2, 'AktivniRok', 'ID aktivního roku', 2025)");
-        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota) VALUES (3, 'AktivniKatedra', 'ID aktivní katedry', 0)");
-        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar) VALUES (11, 'PredmetPrez', 'Zacatek zkratky predmetu pro prezencnci studium', 'AP')");
-        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar) VALUES (12, 'PredmetKomb', 'Zacatek zkratky predmetu pro kombinovane studium', 'AK')");
-        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar) VALUES (13, 'PredmetAng', 'Zacatek zkratky predmetu pro anglickou vyuku', 'AE')");
+        $pdo->exec("INSERT IGNORE INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota, IdVerze) VALUES (1, 'AktivniVerze', 'ID aktivní verze', 0, 1)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota, IdVerze) VALUES (2, 'AktivniRok', 'ID aktivního roku', 2025, 1)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota, IdVerze) VALUES (3, 'AktivniKatedra', 'ID aktivní katedry', 0, 1)");//má být aktivniFakulta ... 
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, Hodnota, IdVerze) VALUES (4, 'ResCountKatedra', 'Zobrazena katedra v result counting', 0, 1)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar, IdVerze) VALUES (11, 'PredmetPrez', 'Zacatek zkratky predmetu pro prezencnci studium', 'AP', 1)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar, IdVerze) VALUES (12, 'PredmetKomb', 'Zacatek zkratky predmetu pro kombinovane studium', 'AK', 1)");
+        $pdo->exec("INSERT INTO nastaveni (IdNastaveni, Nazev, Popis, HodnotaChar, IdVerze) VALUES (13, 'PredmetAng', 'Zacatek zkratky predmetu pro anglickou vyuku', 'AE', 1)");
         $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (1, 'HOD/SEM', 'Hodiny za semestr')");
         $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (2, 'HOD/TYD', 'Hodiny za týden')");
         $pdo->exec("INSERT INTO seq_ucitIdnoExternista (id, cislo) VALUES (1, 0)");
@@ -517,6 +524,7 @@ function getPredmetyUcitel($pdo, $ucitIdno){
 
         if ($response2 === false) {
             throw new Exception("Failed to fetch data for ucitIdno: $ucitIdno");
+            insertErr($pdo, $ucitIdno);
         }
 
         $data2 = json_decode($response2, true);
@@ -574,6 +582,8 @@ function getPredmetyByKatedra($pdo, $katedra){
     $response = file_get_contents($api_url);
     echo nl2br("\nURL API:" . $api_url . "\n");;
 
+    $idPracoviste = getKatedraByZkratka($pdo, $katedra);
+    
     if ($response === FALSE) {
         echo "error in connection";
     }
@@ -585,7 +595,7 @@ function getPredmetyByKatedra($pdo, $katedra){
 //        deletePredmet($pdo);
         foreach ($data['predmetKatedryFullInfo'] as $predmet) {
 
-            insertPredmet($pdo, $predmet['zkratka'], $predmet['nazev'], $predmet['cviciciUcitIdno'], $predmet['seminariciUcitIdno'], $predmet['prednasejiciUcitIdno'], $predmet['vyucovaciJazyky'], $predmet['rok']);
+            insertPredmet($pdo, $predmet['zkratka'], $predmet['nazev'], $predmet['cviciciUcitIdno'], $predmet['seminariciUcitIdno'], $predmet['prednasejiciUcitIdno'], $predmet['vyucovaciJazyky'], $predmet['rok'], $idPracoviste);
             insertPredmetHodiny($pdo, $predmet['zkratka'], $predmet['jednotekPrednasek'], $predmet['jednotkaPrednasky'], $predmet['jednotekCviceni'], $predmet['jednotkaCviceni'], $predmet['jednotekSeminare'], $predmet['jednotkaSeminare']);
             // $ints = parseStringToIntegers($predmet['cviciciUcitIdno']);
 
@@ -594,17 +604,19 @@ function getPredmetyByKatedra($pdo, $katedra){
             $predmetId = $pdo->lastInsertId();
             foreach ($jazyky as $jazyk) {
                 $jazyk = trim($jazyk);
+                if ($jazyk === '') continue;
 
                 // najít jazyk v tabulce jazyk
                 $stmt = $pdo->prepare("SELECT id FROM jazyk WHERE popis = ?");
                 $stmt->execute([$jazyk]);
                 $jazykId = $stmt->fetchColumn();
-
+                
                 // pokud neexistuje, vložit nový jazyk
                 if (!$jazykId) {
                     $stmt = $pdo->prepare("INSERT INTO jazyk (zkratka, popis) VALUES (?, ?)");
                     $stmt->execute([substr($jazyk, 0, 2), $jazyk]);
                     $jazykId = $pdo->lastInsertId();
+                    echo "chyběl jazyk" . $jazyk . "\n";
                 }
 
                 // vložit do predmet_jazyk
@@ -639,7 +651,7 @@ function getPredmetyByKatedraLast($pdo, $katedra){
             $predmetId = $pdo->lastInsertId();
             foreach ($jazyky as $jazyk) {
                 $jazyk = trim($jazyk);
-
+                if ($jazyk === '') continue;
                 // najít jazyk v tabulce jazyk
                 $stmt = $pdo->prepare("SELECT id FROM jazyk WHERE popis = ?");
                 $stmt->execute([$jazyk]);
@@ -723,14 +735,16 @@ function getStudijniProgram($pdo, $fakulta){
     }
 }
 
-function getUcitele($pdo){
+function getUcitele($pdo){  
 
     // API endpoint
-        $katedra = getFakulta($pdo);
+        $katedra = getFakulta($pdo); //tady beru ale fakultu, proč to mám nazvané katedra?
         $api_url = "https://stag-ws.utb.cz/ws/services/rest2/ucitel/getUciteleKatedry?lang=en&outputFormat=JSON&katedra=" . $katedra . "&jenAktualni=true";
     
     // tahání dat
         $response = file_get_contents($api_url);
+
+        $idPracoviste = getKatedraByZkratka($pdo, $katedra);
     
     // bylo úspěšné?
         if ($response === FALSE) {
@@ -747,8 +761,8 @@ function getUcitele($pdo){
 //                deleteUcitele($pdo);
                     // každej učitel smyčka
                 foreach ($data['ucitel'] as $teacher) {
-                    insertUcitel($pdo, $teacher['jmeno'], $teacher['prijmeni'], $teacher['ucitIdno']);
-                    getPredmetyUcitel($pdo ,$teacher['ucitIdno']);
+                    insertUcitel($pdo, $teacher['jmeno'], $teacher['prijmeni'], $teacher['ucitIdno'], $idPracoviste, $teacher['titulPred'], $teacher['titulZa']);
+                    // getPredmetyUcitel($pdo ,$teacher['ucitIdno']);   //ZAKOMENTOVANO PRO TEST/
                     // echo $teacher['jmeno'] . " " . $teacher['prijmeni'];
                 }
             } else {
@@ -759,17 +773,17 @@ function getUcitele($pdo){
         }
     }
 
-function insertUcitel($pdo ,$name, $surname, $ucitIdno){
+function insertUcitel($pdo ,$name, $surname, $ucitIdno, $idPracoviste, $titulPred, $titulZa){
     try {
         // Načtení aktuální verze z tabulky nastaveni
         $stmtVerze = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
         $stmtVerze->execute();
         $IdVerze = $stmtVerze->fetchColumn();
 
-        // Vložení učitele s verzí
-        $query = "INSERT INTO teachers (name, surname, ucitIdno, IdVerze) VALUES (?, ?, ?, ?);";
+        // Vložení učitele s verzí. Přidání pracoviště.
+        $query = "INSERT INTO teachers (name, surname, ucitIdno, IdVerze, idPracoviste, titulPred, titulZa) VALUES (?, ?, ?, ?, ?, ?, ?);";
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$name, $surname, $ucitIdno, $IdVerze]);
+        $stmt->execute([$name, $surname, $ucitIdno, $IdVerze, $idPracoviste, $titulPred, $titulZa]);
 
         echo nl2br("ÚSPĚŠNĚ importován učitel: " . $name . " " . $surname . "\n");
     } catch (PDOException $e) {
@@ -866,15 +880,15 @@ function insertPracoviste($pdo, $idpracovistestag, $zkratka, $typpracoviste, $na
     }
 }
 
-function insertPredmet($pdo, $zkratka, $nazev, $cviciciUcitIdno, $seminariciUcitIdno, $prednasejiciUcitIdno, $vyucovaciJazyky, $rok){
+function insertPredmet($pdo, $zkratka, $nazev, $cviciciUcitIdno, $seminariciUcitIdno, $prednasejiciUcitIdno, $vyucovaciJazyky, $rok, $idPracoviste){
     try {
         $stmtVerze = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
         $stmtVerze->execute();
         $IdVerze = $stmtVerze->fetchColumn();
 
-        $query = "INSERT INTO predmet (zkratka, nazev, cviciciUcitIdno, seminariciUcitIdno, prednasejiciUcitIdno, vyucovaciJazyky, rok, IdVerze) VALUES (?, ?, ?, ?, ?, ?, ?, ?);";
+        $query = "INSERT INTO predmet (zkratka, nazev, cviciciUcitIdno, seminariciUcitIdno, prednasejiciUcitIdno, vyucovaciJazyky, rok, IdVerze, idPracoviste) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
         $stmt = $pdo->prepare($query);
-        $stmt->execute([$zkratka, $nazev, $cviciciUcitIdno, $seminariciUcitIdno, $prednasejiciUcitIdno, $vyucovaciJazyky, $rok, $IdVerze]);
+        $stmt->execute([$zkratka, $nazev, $cviciciUcitIdno, $seminariciUcitIdno, $prednasejiciUcitIdno, $vyucovaciJazyky, $rok, $IdVerze, $idPracoviste]);
 
         echo nl2br("Predmet ÚSPĚŠNĚ insertován: " . $nazev . " " . $rok . "\n");
     } catch (PDOException $e) {
@@ -1090,6 +1104,7 @@ function aktualniSemestr($pdo, $semestr) {
     $stmt2->execute([':semestr' => $semestr]);
 }
 
+//puvodni
 function setKatedra($pdo, $katedra){
 
     $stmtIdKatedra = $pdo->prepare("SELECT idpracoviste FROM pracoviste WHERE zkratka='" . $katedra . "';");
@@ -1097,6 +1112,21 @@ function setKatedra($pdo, $katedra){
     $IdKatedra = $stmtIdKatedra->fetchColumn();
 
     $query = $pdo->prepare ("UPDATE nastaveni SET hodnota=? WHERE nazev='AktivniKatedra'");
+    $query->execute([$IdKatedra]);
+    
+    $query = $pdo->prepare ("UPDATE nastaveni SET hodnota=? WHERE nazev='ResCountKatedra'");
+    $query->execute([$IdKatedra]);
+    // echo $query;
+    echo nl2br("Katedra nastavena jako aktivni: " . $katedra . "\n"); 
+}    
+
+function setKatedraZobrazeni($pdo, $katedra){
+
+    $stmtIdKatedra = $pdo->prepare("SELECT idpracoviste FROM pracoviste WHERE zkratka='" . $katedra . "';");
+    $stmtIdKatedra->execute();
+    $IdKatedra = $stmtIdKatedra->fetchColumn();
+
+    $query = $pdo->prepare ("UPDATE nastaveni SET hodnota=? WHERE nazev='ResCountKatedra'");
     $query->execute([$IdKatedra]);
     
     // echo $query;
@@ -1347,6 +1377,8 @@ function getPredmetInfo($pdo, $katedra){
     $response = file_get_contents($api_url);
     echo nl2br("\nURL API getPredmetInfo:" . $api_url . "\n");;
 
+    $idPracoviste = getKatedraByZkratka($pdo, $katedra);
+
     if ($response === FALSE) {
         echo "error in connection";
     }
@@ -1357,7 +1389,7 @@ function getPredmetInfo($pdo, $katedra){
         }
 //        deletePredmet($pdo);
         foreach ($data['predmetKatedryFullInfo'] as $predmet) {
-            insertPredmet($pdo, $predmet['zkratka'], $predmet['nazev'], $predmet['cviciciUcitIdno'], $predmet['seminariciUcitIdno'], $predmet['prednasejiciUcitIdno'], $predmet['vyucovaciJazyky'], $predmet['rok']);
+            insertPredmet($pdo, $predmet['zkratka'], $predmet['nazev'], $predmet['cviciciUcitIdno'], $predmet['seminariciUcitIdno'], $predmet['prednasejiciUcitIdno'], $predmet['vyucovaciJazyky'], $predmet['rok'], $idPracoviste);
             // $ints = parseStringToIntegers($predmet['cviciciUcitIdno']);
             // echo $ints;
         }
@@ -1517,9 +1549,9 @@ function assignTeachersFromRozvrh($pdo) {
         SELECT ra.predmet_zkratka, ra.typ_akce_zkr, rau.ucitIdno, ra.pocet_vyuc_hodin, rau.podil_na_vyuce
         FROM rozvrhova_akce ra
         JOIN rozvrhova_akce_ucitel rau ON ra.roakIdno = rau.roakIdno
-        WHERE ra.rok = ? AND ra.semestr = ?
+        WHERE ra.rok = ? AND ra.semestr = ? AND ra.Idverze = ?
     ");
-    $stmt->execute([$rok, $semestr]);
+    $stmt->execute([$rok, $semestr, $verze]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $data = [];
@@ -1566,6 +1598,10 @@ function assignTeachersFromRozvrh($pdo) {
 
             foreach ($jazykIds as $jazykId) {
                 if ($hasTeacher) {
+                    if ($total == 0) {
+                    //error_log("Předmět $zkratka ($typ) má nulový součet hodin."); //debug
+                    continue;
+                }
                     foreach ($info['teachers'] as $ucitIdno => $hodinUcitele) {
                         $stmt = $pdo->prepare("SELECT id FROM teachers WHERE ucitIdno = ?");
                         $stmt->execute([$ucitIdno]);
@@ -1605,5 +1641,249 @@ function getSetUcitIdnoExternista($pdo){
     $stmtUp->execute([$cislo]);
     
     return $cislo;
+}
+
+
+function getSemestrZeZkratky($string) {
+    $length = strlen($string);
+    $digits = '';
+
+    for ($i = 0; $i < $length; $i++) {
+        if (is_numeric($string[$i])) {
+            $digits .= $string[$i];
+        }
+    }
+
+    return $digits !== '' ? $digits : null;
+}
+
+function insertErr($pdo, $ucitIdno){
+    $query = "INSERT INTO errnumber (ucitIdno, idVerze) VALUES (?, ?)";
+    $stmt = $pdo->prepare($query);
+    $idVerze=getAktivniVerze($pdo);
+    $stmt->execute([$ucitIdno, $idVerze]);
+        echo nl2br("Vložen errNumber: " . $ucitIdno . "\n");
+}
+
+function getKatedraByZkratka($pdo, $zkratka) {
+    $stmt = $pdo->query("SELECT idpracoviste FROM pracoviste WHERE zkratka = '$zkratka' LIMIT 1");
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $result ? (int) $result['idpracoviste'] : null;
+}
+
+
+//functions all, insert všech dat naráz
+//getPredmetyByKatedra v pořádku
+//getPredmetyByKatedraLast v pořádku
+//teachedlastyear se nevztahuje na katedru
+
+function getAllRozvrhoveAkceLastYearKatedra($pdo, $katedra) {
+    $semestr = getSemestr($pdo);
+    $year = getYear($pdo) - 1;
+//    $katedra = getKatedra($pdo);
+    $verze = getAktivniVerze($pdo);
+
+    $api_url = "https://stag-ws.utb.cz/ws/services/rest2/rozvrhy/getRozvrhByKatedra?semestr=$semestr&jenRozvrhoveAkce=true&outputFormat=JSON&katedra=$katedra&rok=$year";
+    $response = file_get_contents($api_url);
+    echo nl2br("\nURL API:" . $api_url) . "\n";
+
+    if ($response === FALSE) {
+        echo "Error in connection to STAG.";
+        return;
+    }
+
+    $data = json_decode($response, true);
+    if ($data === NULL || !isset($data['rozvrhovaAkce'])) {
+        echo "Error decoding JSON or no data found.";
+        return;
+    }
+
+    foreach ($data['rozvrhovaAkce'] as $ra) {
+        $roakIdno = $ra['roakIdno'];
+        $predmet = $ra['predmet'];
+        $nazev = $ra['nazev'];
+        $typ = strtoupper(substr($ra['typAkceZkr'], 0, 1)); // P/C/S
+        $pocetHodin = $ra['pocetVyucHodin'];
+
+        // Insert rozvrhova_akce
+        $stmt = $pdo->prepare("INSERT INTO rozvrhova_akce (roakIdno, predmet_zkratka, nazev_predmetu, katedra, rok, semestr, typ_akce, typ_akce_zkr, pocet_vyuc_hodin, krouzky, IdVerze)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([
+            $roakIdno, $predmet, $nazev, $katedra, $year, $semestr,
+            $ra['typAkce'], $ra['typAkceZkr'], $pocetHodin,
+            $ra['krouzky'], $verze
+        ]);
+        echo nl2br("\n ÚSPĚŠNĚ importována rozvrhová akce: " . $predmet . ", nazev: " . $nazev . ", typ: " . $ra['typAkce']);
+        // // Zpracování učitelů + podílu
+
+            $ucitIds = explode(',', is_string($ra['vsichniUciteleUcitIdno']) ? $ra['vsichniUciteleUcitIdno'] : '');
+            $podilyStr = $ra['vsichniUciteleJmenaTitulySPodily'];
+            preg_match_all("/\((\d+)\)/", $podilyStr, $matches);
+            $podily = $matches[1];
+
+            foreach ($ucitIds as $index => $ucitIdno) {
+                $ucitIdno = trim($ucitIdno);
+                if (!is_numeric($ucitIdno) || $ucitIdno === '') continue; // přeskočí neplatné hodnoty
+
+                $podil = isset($podily[$index]) ? floatval($podily[$index]) : 100;
+
+                // Insert přímo s ucitIdno bez návaznosti na teachers.id
+                $stmt = $pdo->prepare("INSERT INTO rozvrhova_akce_ucitel (roakIdno, ucitIdno, podil_na_vyuce, IdVerze)
+                                    VALUES (?, ?, ?, ?)");
+                $stmt->execute([$roakIdno, $ucitIdno, $podil, $verze]);
+                echo nl2br("\nImport do rozvrhova_akce_ucitel : ucitIdno: " . $ucitIdno . ", podíl: " . $podil);
+            }
+        // $ucitIds = explode(',', $ra['vsichniUciteleUcitIdno']);
+        // $podilyStr = $ra['vsichniUciteleJmenaTitulySPodily'];
+        // preg_match_all("/\((\d+)\)/", $podilyStr, $matches);
+        // $podily = $matches[1];
+
+        // foreach ($ucitIds as $index => $ucitIdno) {
+        //     $stmt = $pdo->prepare("SELECT id FROM teachers WHERE ucitIdno = ?");
+        //     $stmt->execute([trim($ucitIdno)]);
+        //     $teacher = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        //     if (!$teacher) continue;
+        //     $ucitelId = $teacher['id'];
+        //     $podil = isset($podily[$index]) ? floatval($podily[$index]) : 100;
+
+        //     // Insert učitel-akce
+        //     $stmt = $pdo->prepare("INSERT INTO rozvrhova_akce_ucitel (roakIdno, ucitIdno, podil_na_vyuce, IdVerze)
+        //                            VALUES (?, ?, ?, ?)");
+        //     $stmt->execute([$roakIdno, $ucitelId, $podil, $verze]);
+        // }
+    }
+
+    echo ("\nRozvrhové akce úspěšně zpracovány.");
+}
+
+function getAllUcitele($pdo, $katedra){
+
+    // API endpoint
+        // $katedra = getFakulta($pdo);
+        $api_url = "https://stag-ws.utb.cz/ws/services/rest2/ucitel/getUciteleKatedry?lang=en&outputFormat=JSON&katedra=" . $katedra . "&jenAktualni=true";
+    
+    // tahání dat
+        $response = file_get_contents($api_url);
+
+        $idPracoviste = getKatedraByZkratka($pdo, $katedra);
+    
+    // bylo úspěšné?
+        if ($response === FALSE) {
+        // pokud nebylo úspěšné
+            echo "Error occurred while fetching data from the API.";
+        } else {
+            $data = json_decode($response, true);
+            if ($data === NULL) {
+            echo "Error decoding JSON response.";
+        } else {
+    //        $api_response = $data;
+            
+            if (isset($data['ucitel'])) {
+//                deleteUcitele($pdo);
+                    // každej učitel smyčka
+                foreach ($data['ucitel'] as $teacher) {
+                    insertUcitel($pdo, $teacher['jmeno'], $teacher['prijmeni'], $teacher['ucitIdno'], $idPracoviste, $teacher['titulPred'], $teacher['titulZa']);
+                    // getPredmetyUcitel($pdo ,$teacher['ucitIdno']);   //ZAKOMENTOVANO PRO TEST/
+                    // echo $teacher['jmeno'] . " " . $teacher['prijmeni'];
+                }
+            } else {
+                    echo "No teachers found in the response.";
+                    }
+    //            var_dump($api_response);
+            }
+        }
+    }
+
+function insertAllKatedry($pdo) {
+    $verze = getAktivniVerze($pdo);
+    $stmt = $pdo->prepare("SELECT zkratka FROM pracoviste WHERE IdVerze = ?");
+    $stmt->execute([$verze]);
+    $katedry = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    foreach ($katedry as $katedra) {
+        getPredmetyByKatedra($pdo, $katedra);
+        getPredmetyByKatedraLast($pdo, $katedra);
+        getAllUcitele($pdo, $katedra);
+        // teachedlastyear($pdo);
+        getAllRozvrhoveAkceLastYearKatedra($pdo, $katedra);
+        //assignTeachersFromRozvrh($pdo);
+    }
+    teachedlastyear($pdo);
+//    vycistitPredmetJazyk($pdo);
+    //assignTeachersFromRozvrh
+    assignTeachersFromRozvrh($pdo);
+    setPrvniKatedra($pdo);
+}
+
+//dle konzultace - mazání řádků angličtiny, kde je český i anglický jazyk. 
+function vycistitPredmetJazyk($pdo) {
+    $stmt = $pdo->query("
+        SELECT predmetid
+        FROM predmet_jazyk
+        GROUP BY predmetid
+        HAVING COUNT(*) > 1
+    ");
+    $predmety = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    $deleteStmt = $pdo->prepare("
+        DELETE FROM predmet_jazyk
+        WHERE predmetid = :predmetid AND jazykid != 1
+    ");
+
+    foreach ($predmety as $predmetid) {
+        $deleteStmt->execute([':predmetid' => $predmetid]);
+    }
+
+    echo "Hotovo!";
+}
+
+function setPrvniKatedra2($pdo){
+    $verze = getAktivniVerze($pdo);
+    $stmt = $pdo->prepare("SELECT hodnota FROM nastaveni WHERE IdVerze = ? AND nazev='ResCountKatedra'");
+    $stmt->execute([$verze]);
+    $IdKatedra = $stmt->fetchColumn();
+
+    setKatedraAll($pdo, $IdKatedra);
+}
+
+function setPrvniKatedra($pdo){
+    $verze = getAktivniVerze($pdo);
+    $stmt = $pdo->prepare("SELECT MIN(idpracoviste) FROM pracoviste WHERE IdVerze = ?");
+    $stmt->execute([$verze]);
+    $IdKatedra = $stmt->fetchColumn();
+
+    setKatedraAll($pdo, $IdKatedra);
+}
+
+function setKatedraAll($pdo, $katedra){
+    // $stmtIdKatedra = $pdo->prepare("SELECT idpracoviste FROM pracoviste WHERE zkratka = ?");
+    // $stmtIdKatedra->execute([$katedra]);
+    // $IdKatedra = $stmtIdKatedra->fetchColumn();
+
+    // if ($IdKatedra === false || $IdKatedra === null) {
+    //     echo "⚠️ Chyba: Neexistuje katedra se zkratkou '$katedra'.<br>";
+    //     return;
+    // }
+
+    $query = $pdo->prepare("UPDATE nastaveni SET hodnota = ? WHERE nazev = 'AktivniKatedra'");
+    $query->execute([$katedra]);
+
+    $query = $pdo->prepare("UPDATE nastaveni SET hodnota = ? WHERE nazev = 'ResCountKatedra'");
+    $query->execute([$katedra]);
+
+    echo nl2br("✅ Katedra nastavena jako aktivní: " . $katedra . "\n");
+}
+
+function getAktualniKatedraForResultCount($pdo) {
+    $stmt = $pdo->prepare("
+        SELECT p.zkratka, p.nazev 
+        FROM nastaveni n
+        JOIN pracoviste p ON n.hodnota = p.idpracoviste
+        WHERE n.nazev = 'ResCountKatedra'
+        LIMIT 1
+    ");
+    $stmt->execute();
+    return $stmt->fetch(PDO::FETCH_ASSOC); // vrátí pole: ['zkratka' => ..., 'nazev' => ...]
 }
 
