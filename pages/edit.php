@@ -42,8 +42,8 @@
             <!-- <li><a href="editpocetstudentu.php" target="_blank">Edit Počet Studentů</a></li> -->
             <!-- <li><a href="#" onclick="window.open('editpocetstudentu.php', 'Pocet studentu', 'width=600,height=500'); return false;">Pocet studentu</a> -->
             <li><a href="#" onclick="window.open('insertExternista.php', 'Externista', 'width=600,height=500'); return false;">Přidat externistu</a>
-            <li><a href="#" onclick="window.open('edit_rocniky.php', 'EditRocnik', 'width=1200,height=500'); return false;">Edit rocniky</a>
-            </li>
+            <li><a href="#" onclick="window.open('edit_rocniky.php', 'EditRocnik', 'width=1200,height=500'); return false;">Edit rocniky</a></li>
+            <li><a href="rozdat_cviceni.php">Rozdělit cvičení podle počtu studentů</a></li>
         </ul>
     </div>
 </body>

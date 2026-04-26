@@ -33,6 +33,20 @@ $teachers = getTeachersData($pdo);
                         <td><?= htmlspecialchars($teacher['name'] ?? '') ?></td>
                         <td><?= htmlspecialchars($teacher['surname'] ?? '') ?></td>
                         <td><?= htmlspecialchars($teacher['telefon'] ?? '') ?></td>
+                        <!-- <td>
+                            <button type="button"
+                                onclick="window.open(
+                                    'uvazek-ucitele.php?id=<?= (int)$teacher['id_ucitel'] ?>',
+                                    'UvazekUcitele',
+                                    'width=800,height=600,resizable=yes,scrollbars=yes'
+                                )">
+                                Zobrazit úvazek
+                            </button>
+                            <form method="get" action="/pages/export-uvazek.php" style="display:inline;">
+                                <input type="hidden" name="teacherId" value="<?= (int)$teacher['id_ucitel'] ?>">
+                                <button type="submit">Export Excel</button>
+                            </form>
+                        </td> -->
                         <td>
                             <button type="button"
                                 onclick="window.open(
@@ -42,6 +56,16 @@ $teachers = getTeachersData($pdo);
                                 )">
                                 Zobrazit úvazek
                             </button>
+
+                            <button type="button"
+                                onclick="window.open(
+                                    'edit-ucitel.php?id=<?= (int)$teacher['id_ucitel'] ?>',
+                                    'EditUcitel',
+                                    'width=700,height=500,resizable=yes,scrollbars=yes'
+                                )">
+                                Detail / editace
+                            </button>
+
                             <form method="get" action="/pages/export-uvazek.php" style="display:inline;">
                                 <input type="hidden" name="teacherId" value="<?= (int)$teacher['id_ucitel'] ?>">
                                 <button type="submit">Export Excel</button>

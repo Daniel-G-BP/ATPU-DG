@@ -17,17 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: settings.php");
         exit;
     }
-    if (isset($_POST['save_nastaveni'])) {
-        foreach ($_POST['nastaveni'] as $id => $hodnota) {
-            updateNastaveni($id, $hodnota);
-        }
-        header("Location: settings.php");
-        exit;
-    }
 }
 
 $tituly = getTituly();
-$nastaveni = getNastaveni();
 ?>
 
 <!DOCTYPE html>
@@ -75,26 +67,6 @@ $nastaveni = getNastaveni();
                 <?php endforeach; ?>
             </tbody>
         </table>
-    </div>
-
-    <div class="section">
-        <h2>Správa nastavení (Prezenční / Kombinované / Doktorské)</h2>
-        <form method="post">
-            <?php foreach ($nastaveni as $nast): ?>
-                <?php
-                $popis = "ID " . $nast['IdNastaveni'];
-                if ($nast['IdNastaveni'] == 11) $popis = "Prezenční";
-                if ($nast['IdNastaveni'] == 12) $popis = "Kombinované";
-                if ($nast['IdNastaveni'] == 13) $popis = "Doktorské";
-                ?>
-                <div class="form-group">
-                    <label for="nastaveni_<?php echo $nast['IdNastaveni']; ?>"><?php echo htmlspecialchars($popis); ?>:</label>
-                    <input type="text" id="nastaveni_<?php echo $nast['IdNastaveni']; ?>" name="nastaveni[<?php echo $nast['IdNastaveni']; ?>]" value="<?php echo htmlspecialchars($nast['HodnotaChar']); ?>" class="form-control" required>
-                </div>
-            <?php endforeach; ?>
-            <br>
-            <button type="submit" name="save_nastaveni" class="btn btn-success">Uložit změny</button>
-        </form>
     </div>
 
 </div>

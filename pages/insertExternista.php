@@ -19,24 +19,28 @@
         $tituly = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (isset($_POST['send'])) {
-            $name = $_POST["name"];
-            $surname = $_POST["surname"];
-            $email = $_POST["email"];
-            $phone = $_POST["phone"];
-            $other = $_POST["other"];
+            $name    = trim($_POST["name"]    ?? '');
+            $surname = trim($_POST["surname"] ?? '');
+            $email   = trim($_POST["email"]   ?? '');
+            $phone   = trim($_POST["phone"]   ?? '');
+            $other   = trim($_POST["other"]   ?? '');
             $titulId = intval($_POST['titul'] ?? 0);
 
-            $ucitIdno = -getSetUcitIdnoExternista($pdo); //externistu poznáme podle záporného ucitidno
-            $stmtVerze = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
-            $stmtVerze->execute();
-            $idVerze = $stmtVerze->fetchColumn();
+            $ucitIdno = -getSetUcitIdnoExternista($pdo); // externistu poznáme podle záporného ucitidno
+            $idVerze  = getAktivniVerze($pdo);
 
             $stmt = $pdo->prepare("INSERT INTO teachers (name, surname, ucitIdno, IdVerze, idCisTituly) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$name, $surname, $ucitIdno, $idVerze, $titulId]);
-            $stmt = $pdo->prepare("INSERT INTO kontakt (idTeacher, email, telefon, poznamka, IdVerze) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$ucitIdno, $email, $phone, $other, $idVerze]);
+            $teacherId = (int)$pdo->lastInsertId(); // BUG FIX: použít teachers.id, ne ucitIdno jako FK
 
-            echo "<p style='color:green; font-weight:bold;'>Externista <strong>$name $surname</strong> byl úspěšně vložen.</p>";
+            $stmt = $pdo->prepare("INSERT INTO kontakt (idTeacher, email, telefon, poznamka, IdVerze) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$teacherId, $email, $phone, $other, $idVerze]);
+
+            // BUG FIX: XSS – výstup sanitován přes htmlspecialchars()
+            echo "<p style='color:green; font-weight:bold;'>Externista <strong>"
+                . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ' '
+                . htmlspecialchars($surname, ENT_QUOTES, 'UTF-8')
+                . "</strong> byl úspěšně vložen.</p>";
         }
         ?>
 

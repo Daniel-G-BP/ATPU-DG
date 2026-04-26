@@ -11,7 +11,8 @@ require_once '../includes/functions_edit_rocniky.php';
 </head>
 <body>
 <div class="container">
-    <h1>Editace počtu studentů</h1>
+    <h1>Editace počtu studentů v ročnících studijních programů</h1>
+    <p>Tyto hodnoty se používají jako hlavní zdroj pro A2 a pro budoucí export studentů po předmětech.</p>
 
     <?php if (isset($_GET['success'])): ?>
         <div class="success-message">Změny byly úspěšně uloženy.</div>
@@ -21,6 +22,7 @@ require_once '../includes/functions_edit_rocniky.php';
         <table>
             <thead>
             <tr>
+                <th>StprIdno</th>
                 <th>Název programu</th>
                 <th>Ročník</th>
                 <th>Jazyk</th>
@@ -32,6 +34,7 @@ require_once '../includes/functions_edit_rocniky.php';
             <tbody>
             <?php foreach ($rocnikyData as $row): ?>
                 <tr>
+                    <td><?= (int)$row['stprIdno'] ?></td>
                     <td><?= htmlspecialchars($row['nazev_programu']) ?></td>
                     <td><?= $row['rocnik'] ?></td>
                     <td><?= prelozJazyk($row['jazyk']) ?></td>
