@@ -661,6 +661,7 @@ function renderStateFields($verze, $vybranaKatedra, $filtrFakulta, $filtrNazev, 
             <li><a href="edit.php">Edit</a></li>
             <li><a href="insert1.php">Insert do DB</a></li>
             <li><a href="result-counting.php">Manuální Editace</a></li>
+            <li><a href="zkouseni.php">Zkoušení (A2)</a></li>
             <li><a href="overview-ucitele.php">Přehled kantoři</a></li>
             <li><a href="settings.php">Nastavení</a></li>
         </ul>
