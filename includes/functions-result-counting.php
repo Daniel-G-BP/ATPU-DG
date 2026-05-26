@@ -277,8 +277,8 @@ try {
                 INSERT INTO ucitelpredmetprirazeni ($columns)
                 VALUES ($placeholders)
             ");
-            $stmt->execute(array_values($row));
 
+            $stmt->execute(array_values($row));
             redirectBack(['copied' => $id]);
     }
 

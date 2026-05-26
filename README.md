@@ -7,8 +7,12 @@ Spuštění aplikace:
 git clone https://github.com/Daniel-G-BP/ATPU-DG
 cd ATPU-DG
 
-3. Změna config.php:
-v adresáři projektu jdi na "includes\config-example.php" (zde musíš přidat své přihlašovací údaje k databázi STAGu aby se načítala data ze STAGu), následně uložit a přejmenovat na config.php
+3. Nastavení přihlašovacích údajů do STAGu:
+Otevři soubor docker-compose.yml a vyplň své přihlašovací údaje (stejné jako pro IS/STAG UTB):
+
+    environment:
+      STAG_USERNAME: "tvoje_prihlasovaci_jmeno"
+      STAG_PASSWORD: "tvoje_heslo"
 
 
 4. Spusťte aplikaci: 

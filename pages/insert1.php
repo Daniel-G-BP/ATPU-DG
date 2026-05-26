@@ -94,22 +94,33 @@
         }
         .msg-ok  { color: green; font-weight: bold; }
         .msg-err { color: red;   font-weight: bold; }
+        .aj-section {
+            background: #f0f4ff;
+            border-left: 4px solid #4a6fa5;
+            border-radius: 4px;
+            padding: 14px 20px;
+            margin-bottom: 12px;
+        }
+        .aj-section h3 { margin: 0 0 6px 0; font-size: 0.95rem; color: #1a2f5c; }
+        .aj-section p.hint { margin: 0 0 10px 0; color: #445; font-size: 0.85rem; }
+        .aj-section form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .aj-danger { background: #fff5f5; border-left-color: #c0392b; }
+        .aj-danger h3 { color: #7a1a1a; }
+        .aj-danger p.hint { color: #7a1a1a; }
+        .toggle-label {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.92rem; cursor: pointer; user-select: none;
+        }
+        .toggle-label input[type=checkbox] { width: 18px; height: 18px; cursor: pointer; }
+        .aj-badge-on  { display:inline-block; background:#198754; color:#fff;
+                        border-radius:10px; padding:2px 10px; font-size:.8rem; font-weight:bold; }
+        .aj-badge-off { display:inline-block; background:#dc3545; color:#fff;
+                        border-radius:10px; padding:2px 10px; font-size:.8rem; font-weight:bold; }
     </style>
 </head>
 
 <body>
-    <div id="navbar">
-        <ul>
-            <h1 style="text-align: center;">Menu</h1>
-            <li><a href="../index.php">Main</a></li>
-            <li><a href="view.php">View</a></li>
-            <li><a href="edit.php">Edit</a></li>
-            <li><a href="insert1.php">Import dat</a></li>
-            <li><a href="result-counting.php">Manuální editace</a></li>
-            <li><a href="overview-ucitele.php">Přehled učitelé</a></li>
-            <li><a href="settings.php">Nastavení</a></li>
-        </ul>
-    </div>
+    <?php include 'navbar.php'; ?>
 
     <div id="content" class="rounded-border">
         <?php
@@ -178,6 +189,25 @@
             importAllFakultyAKatedry($pdo);
             echo "<p class='msg-ok'>✔ Kompletní import všech fakult dokončen.</p>";
         }
+
+        if (isset($_POST['set_zahrnout_aj'])) {
+            $hodnota = isset($_POST['zahrnout_aj']) && $_POST['zahrnout_aj'] === '1';
+            setZahrnoutAJ($pdo, $hodnota);
+            echo "<p class='msg-ok'>✔ Nastavení anglických výuk bylo uloženo.</p>";
+        }
+
+        if (isset($_POST['odebrat_ucitele_aj'])) {
+            $pocet = odebratUciteleAJ($pdo);
+            echo "<p class='msg-ok'>✔ Odebrán učitel z <strong>$pocet</strong> anglických výuk.</p>";
+        }
+
+        if (isset($_POST['repopulate_zkouseni'])) {
+            autoPopulateZkouseniPrirazeni($pdo);
+            echo "<p class='msg-ok'>✔ Tabulka zkouseni_prirazeni byla předvyplněna.</p>";
+        }
+
+        // ── Načtení nastavení ZahrnoutAJ ────────────────────────────────────
+        $zahrnoutAJ = getZahrnoutAJ($pdo);
 
         // ── Načtení aktuální verze ───────────────────────────────────────────
         $stmt = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze'");
@@ -328,6 +358,48 @@
         </div>
 
         <!-- ═══════════════════════════════════════════════════════════════════
+             SPRÁVA ANGLICKÝCH VÝUK
+        ════════════════════════════════════════════════════════════════════ -->
+        <div class="section-title">Nastavení anglických výuk</div>
+
+        <div class="aj-section">
+            <h3>
+                Zahrnout anglické výuky do zobrazení a exportů
+                &nbsp;
+                <?php if ($zahrnoutAJ): ?>
+                    <span class="aj-badge-on">AJ ZAPNUTO</span>
+                <?php else: ?>
+                    <span class="aj-badge-off">AJ VYPNUTO</span>
+                <?php endif; ?>
+            </h3>
+            <p class="hint">
+                Pokud je přepínač vypnut, anglické výuky se <strong>nezobrazují v Manuální editaci</strong>,
+                <strong>nezapočítávají se při exportu úvazků</strong> a <strong>nezobrazují se v Přehledu učitele</strong>.
+                Data v databázi zůstávají nedotčena.
+            </p>
+            <form method="post">
+                <label class="toggle-label">
+                    <input type="checkbox" name="zahrnout_aj" value="1" <?= $zahrnoutAJ ? 'checked' : '' ?>>
+                    Zahrnout anglické výuky
+                </label>
+                <input type="submit" name="set_zahrnout_aj" value="Uložit nastavení">
+            </form>
+        </div>
+
+        <div class="aj-section aj-danger">
+            <h3>Odebrat učitele z anglických výuk</h3>
+            <p class="hint">
+                Nastaví <code>teacherid = NULL</code> u všech anglických výuk v aktivní verzi.
+                Výukové záznamy zůstanou zachovány, pouze bez přiřazeného učitele.
+                Tato akce je nevratná bez ručního přiřazení nebo re-importu.
+            </p>
+            <form method="post">
+                <input type="submit" name="odebrat_ucitele_aj" value="Odebrat učitele z AJ výuk"
+                    onclick="return confirm('Opravdu odebrat všechny učitele ze všech anglických výuk? Tato akce je nevratná.');">
+            </form>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════
              POKROČILÉ – Hromadný import
         ════════════════════════════════════════════════════════════════════ -->
         <details>
@@ -348,6 +420,20 @@
                 <form method="post">
                     <input type="submit" name="import_all_fakulty" value="Spustit kompletní import (celá UTB)"
                         onclick="return confirm('Spustit kompletní import celé UTB? Akce trvá velmi dlouho a přepíše stávající data.');">
+                </form>
+            </div>
+
+            <div class="advanced-section" style="margin-top:10px; border-left-color: #2e7d32;">
+                <h3 style="color:#1b5e20;">Předvyplnit zkoušení (A.2) z aktuálních dat</h3>
+                <p class="hint" style="color:#1b5e20;">
+                    Znovu spustí <code>autoPopulateZkouseniPrirazeni()</code> nad aktuální verzí.
+                    Použij pokud sekce A.2 v exportu svítí prázdná, ale data v DB jsou OK.
+                    Stávající manuálně upravené záznamy v zkouseni_prirazeni <strong>zůstanou zachovány</strong>
+                    (ON DUPLICATE KEY UPDATE ignoruje existující řádky).
+                </p>
+                <form method="post">
+                    <input type="submit" name="repopulate_zkouseni" value="Předvyplnit zkouseni_prirazeni"
+                        onclick="return confirm('Spustit předvyplnění tabulky zkouseni_prirazeni?');">
                 </form>
             </div>
         </details>

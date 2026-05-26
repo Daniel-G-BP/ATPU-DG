@@ -30,7 +30,11 @@ function connectToDatabase() {
     ];
 
     try {
-        return new PDO($dsn, $user, $pass, $options);
+        $pdo = new PDO($dsn, $user, $pass, $options);
+        // Spustit DB migrace při každém připojení (idempotentní)
+        require_once __DIR__ . '/functions.php';
+        runMigrations($pdo);
+        return $pdo;
     } catch (\PDOException $e) {
         die("Připojení k databázi selhalo: " . $e->getMessage());
     }

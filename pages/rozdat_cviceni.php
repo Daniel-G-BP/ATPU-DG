@@ -7,16 +7,36 @@ $zprava   = null;
 $chyba    = null;
 $pridano  = 0;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['provest'])) {
-    try {
-        $pridano = rozdelitCviceniPodleStudentu($pdo);
-        $zprava  = "Hotovo – přidáno $pridano nových skupin cvičení.";
-    } catch (Throwable $e) {
-        $chyba = 'Chyba: ' . htmlspecialchars($e->getMessage());
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+    // --- Přidat skupiny pro jeden konkrétní řádek ---
+    if (isset($_POST['provest_jeden'])) {
+        $predmetId     = (int)($_POST['predmet_id']      ?? 0);
+        $jazyk         = (int)($_POST['jazyk']           ?? 0);
+        $maxNaSkupinu  = (int)($_POST['max_na_skupinu']  ?? 0);
+        $pridat        = (int)($_POST['pridat']          ?? 0);
+
+        if ($predmetId > 0 && $jazyk > 0 && $maxNaSkupinu > 0 && $pridat > 0) {
+            try {
+                $pridano = rozdelitJednuSkupinuCviceni($pdo, $predmetId, $jazyk, $maxNaSkupinu, $pridat);
+                $zprava  = "Přidáno $pridano nových skupin cvičení.";
+            } catch (Throwable $e) {
+                $chyba = 'Chyba: ' . htmlspecialchars($e->getMessage());
+            }
+        }
+
+    // --- Přidat skupiny pro všechny řádky najednou ---
+    } elseif (isset($_POST['provest'])) {
+        try {
+            $pridano = rozdelitCviceniPodleStudentu($pdo);
+            $zprava  = "Hotovo – přidáno $pridano nových skupin cvičení.";
+        } catch (Throwable $e) {
+            $chyba = 'Chyba: ' . htmlspecialchars($e->getMessage());
+        }
     }
 }
 
-$plan        = getCviceniRozdeleniNahled($pdo);
+$plan         = getCviceniRozdeleniNahled($pdo);
 $celkemPridat = array_sum(array_column($plan, 'pridat'));
 
 $jazyky = [];
@@ -55,11 +75,20 @@ foreach ($stmtJ->fetchAll(PDO::FETCH_ASSOC) as $j) {
         .btn-run { background:#0d6efd; color:#fff; border:none; padding:10px 22px;
                    border-radius:6px; font-size:1em; cursor:pointer; margin-top:18px; }
         .btn-run:disabled { background:#aaa; cursor:default; }
+
+        /* Tlačítko pro jeden řádek */
+        .btn-row { background:#198754; color:#fff; border:none; padding:4px 12px;
+                   border-radius:5px; font-size:.85em; cursor:pointer; white-space:nowrap; }
+        .btn-row:hover { background:#157347; }
+
         .btn-back { margin-top:10px; display:inline-block; color:#0d6efd;
                     text-decoration:none; font-size:.93em; }
 
         .summary { margin:14px 0 10px; font-size:.97em; }
         .empty   { color:#888; margin-top:30px; font-size:.97em; }
+
+        /* Inline formulář v buňce tabulky */
+        td form { margin:0; display:inline; }
     </style>
 </head>
 <body>
@@ -103,6 +132,7 @@ foreach ($stmtJ->fetchAll(PDO::FETCH_ASSOC) as $j) {
                 <th>Potřeba skupin</th>
                 <th>Aktuálně skupin</th>
                 <th>Přidat</th>
+                <th>Akce</th>
             </tr>
         </thead>
         <tbody>
@@ -126,6 +156,22 @@ foreach ($stmtJ->fetchAll(PDO::FETCH_ASSOC) as $j) {
                         <span class="badge badge-ok">OK</span>
                     <?php endif; ?>
                 </td>
+                <td>
+                    <?php if ($r['pridat'] > 0): ?>
+                        <form method="post">
+                            <input type="hidden" name="predmet_id"     value="<?= $r['predmet_id'] ?>">
+                            <input type="hidden" name="jazyk"          value="<?= $r['jazyk'] ?>">
+                            <input type="hidden" name="max_na_skupinu" value="<?= $r['max_na_skupinu'] ?>">
+                            <input type="hidden" name="pridat"         value="<?= $r['pridat'] ?>">
+                            <button type="submit" name="provest_jeden" class="btn-row"
+                                    title="Přidat +<?= $r['pridat'] ?> skupin jen pro tento předmět">
+                                Rozdat tento
+                            </button>
+                        </form>
+                    <?php else: ?>
+                        <span style="color:#888; font-size:.85em;">—</span>
+                    <?php endif; ?>
+                </td>
             </tr>
         <?php endforeach; ?>
         </tbody>
@@ -134,7 +180,7 @@ foreach ($stmtJ->fetchAll(PDO::FETCH_ASSOC) as $j) {
     <?php if ($celkemPridat > 0): ?>
         <form method="post">
             <button type="submit" name="provest" class="btn-run">
-                Provést – přidat <?= $celkemPridat ?> skupin
+                Provést vše – přidat <?= $celkemPridat ?> skupin
             </button>
         </form>
     <?php else: ?>
@@ -147,18 +193,7 @@ foreach ($stmtJ->fetchAll(PDO::FETCH_ASSOC) as $j) {
 
 <a href="../index.php" class="btn-back">← Zpět na hlavní stránku</a>
 
-<div id="navbar" style="display:none;">
-    <ul>
-        <h1 style="text-align:center;">Menu</h1>
-        <li><a href="../index.php">Main</a></li>
-        <li><a href="insert1.php">Import dat</a></li>
-        <li><a href="result-counting.php">Manuální editace</a></li>
-        <li><a href="edit_rocniky.php">Ročníky / studenti</a></li>
-        <li><a href="overview-ucitele.php">Přehled kantorů</a></li>
-        <li><a href="settings.php">Nastavení</a></li>
-    </ul>
-</div>
-<button id="toggleButton" onclick="toggleNavbarRC()">Zobrazit Menu</button>
+<?php include 'navbar.php'; ?>
 <script src="../webfunc.js"></script>
 </body>
 </html>

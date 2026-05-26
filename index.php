@@ -24,11 +24,12 @@
             <li><a href="index.php">Main</a></li>
             <li><a href="pages/view.php">View</a></li>
             <li><a href="pages/edit.php">Edit</a></li>
-            <li><a href="pages/insert1.php">Insert do DB</a></li>
-            <li><a href="pages/result-counting.php">Manuální Editace</a></li>
+            <li><a href="pages/insert1.php">Import dat</a></li>
+            <li><a href="pages/result-counting.php">Manuální editace (A.1)</a></li>
+            <li><a href="pages/zkouseni.php">Zkoušení (A.2)</a></li>
             <li><a href="pages/rozdat_cviceni.php">Rozdělit cvičení</a></li>
-            <li><a href="pages/overview-ucitele.php">Přehled kantorů</a></li>
-            <li><a href="pages/settings.php">Nastavní</a></li>
+            <li><a href="pages/overview-ucitele.php">Přehled učitelé</a></li>
+            <li><a href="pages/settings.php">Nastavení</a></li>
         </ul>
     </div>
 

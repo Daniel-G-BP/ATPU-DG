@@ -122,6 +122,135 @@ function stagGetJson($url, $maxAttempts = 3, $sleepMs = 800) {
     );
 }
 
+/**
+ * Spustí DB migrace – volá se jednou za request, bezpečně (idempotentní).
+ */
+function runMigrations(PDO $pdo): void
+{
+    // Migrace 001: odebrat UNIQUE KEY uniq_upp z ucitelpredmetprirazeni
+    try {
+        $stmt = $pdo->query("
+            SELECT COUNT(*) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'ucitelpredmetprirazeni'
+              AND INDEX_NAME = 'uniq_upp'
+        ");
+        if ((int)$stmt->fetchColumn() > 0) {
+            $pdo->exec("ALTER TABLE ucitelpredmetprirazeni DROP INDEX uniq_upp");
+        }
+    } catch (\Throwable $e) {
+        error_log('Migration 001 failed: ' . $e->getMessage());
+    }
+
+    // Migrace 002: přidat sloupce typZkousky, aSkut, bSkut, cSkut do tabulky predmet
+    try {
+        $stmt = $pdo->query("
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'predmet'
+              AND COLUMN_NAME = 'typZkousky'
+        ");
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec("ALTER TABLE predmet
+                ADD COLUMN typZkousky VARCHAR(50) DEFAULT NULL,
+                ADD COLUMN aSkut INT DEFAULT 0,
+                ADD COLUMN bSkut INT DEFAULT 0,
+                ADD COLUMN cSkut INT DEFAULT 0
+            ");
+        }
+    } catch (\Throwable $e) {
+        error_log('Migration 002 failed: ' . $e->getMessage());
+    }
+
+    // Migrace 003: vytvořit tabulku zkouseni_prirazeni pro data části A.2
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS zkouseni_prirazeni (
+                id INT PRIMARY KEY AUTO_INCREMENT,
+                predmetid INT NOT NULL,
+                teacherid INT NOT NULL,
+                IdVerze INT NOT NULL,
+                pocet_kl INT DEFAULT 0,
+                pocet_zap INT DEFAULT 0,
+                pocet_zk INT DEFAULT 0,
+                pocet_dz INT DEFAULT 0,
+                UNIQUE KEY uniq_zkouseni (predmetid, teacherid, IdVerze)
+            )
+        ");
+    } catch (\Throwable $e) {
+        error_log('Migration 003 failed: ' . $e->getMessage());
+    }
+
+    // Migrace 004: vytvořit tabulku predmet_jazyk a view vwPredmetJazyk pokud neexistují
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS predmet_jazyk (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                predmetid INT NOT NULL,
+                jazykid INT NOT NULL,
+                UNIQUE KEY uniq_predmet_jazyk (predmetid, jazykid)
+            )
+        ");
+    } catch (\Throwable $e) {
+        error_log('Migration 004a failed: ' . $e->getMessage());
+    }
+
+    try {
+        $stmt = $pdo->query("
+            SELECT COUNT(*) FROM information_schema.VIEWS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'vwPredmetJazyk'
+        ");
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec("
+                CREATE VIEW vwPredmetJazyk AS
+                    SELECT DISTINCT predmetid, jazykid
+                    FROM predmet_jazyk
+            ");
+        }
+    } catch (\Throwable $e) {
+        error_log('Migration 004b failed: ' . $e->getMessage());
+    }
+
+    // Migrace 005: vytvořit tabulky rozvrhova_akce a rozvrhova_akce_ucitel pokud neexistují
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS rozvrhova_akce (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                roakIdno INT,
+                predmet_zkratka VARCHAR(20),
+                nazev_predmetu VARCHAR(255),
+                katedra VARCHAR(10),
+                rok INT,
+                semestr VARCHAR(2),
+                typ_akce VARCHAR(20),
+                typ_akce_zkr VARCHAR(5),
+                pocet_vyuc_hodin INT,
+                krouzky TEXT,
+                IdVerze INT,
+                UNIQUE KEY uniq_rozvrhova_akce (IdVerze, roakIdno)
+            )
+        ");
+    } catch (\Throwable $e) {
+        error_log('Migration 005a failed: ' . $e->getMessage());
+    }
+
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS rozvrhova_akce_ucitel (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                roakIdno INT,
+                ucitIdno INT,
+                podil_na_vyuce FLOAT,
+                IdVerze INT,
+                UNIQUE KEY uniq_rozvrhova_akce_ucitel (IdVerze, roakIdno, ucitIdno)
+            )
+        ");
+    } catch (\Throwable $e) {
+        error_log('Migration 005b failed: ' . $e->getMessage());
+    }
+}
+
 function getAktivniVerze($pdo) {
     $stmt = $pdo->prepare("SELECT Hodnota FROM nastaveni WHERE Nazev = 'AktivniVerze' LIMIT 1");
     $stmt->execute();
@@ -142,6 +271,53 @@ function getCurrentVersionValue($pdo, $nazev, $column = 'Hodnota') {
     $stmt = $pdo->prepare("SELECT {$column} FROM nastaveni WHERE Nazev = ? AND IdVerze = ? LIMIT 1");
     $stmt->execute([$nazev, $idVerze]);
     return $stmt->fetchColumn();
+}
+
+/**
+ * Vrátí true pokud mají být anglické výuky zahrnuty (výchozí: true).
+ */
+function getZahrnoutAJ(PDO $pdo): bool {
+    $val = getCurrentVersionValue($pdo, 'ZahrnoutAJ');
+    return ($val === false) ? true : (bool)(int)$val;
+}
+
+/**
+ * Uloží nastavení ZahrnoutAJ pro aktivní verzi (UPSERT přes UPDATE + INSERT).
+ */
+function setZahrnoutAJ(PDO $pdo, bool $zahrnout): void {
+    $idVerze  = getAktivniVerze($pdo);
+    $hodnota  = $zahrnout ? 1 : 0;
+
+    $upd = $pdo->prepare("
+        UPDATE nastaveni SET Hodnota = ?
+        WHERE Nazev = 'ZahrnoutAJ' AND IdVerze = ?
+    ");
+    $upd->execute([$hodnota, $idVerze]);
+
+    if ($upd->rowCount() === 0) {
+        $ins = $pdo->prepare("
+            INSERT INTO nastaveni (Nazev, Popis, Hodnota, HodnotaChar, IdVerze)
+            VALUES ('ZahrnoutAJ', 'Zahrnout anglické výuky do zobrazení a exportů', ?, NULL, ?)
+        ");
+        $ins->execute([$hodnota, $idVerze]);
+    }
+}
+
+/**
+ * Odebere učitele (teacherid = NULL) ze všech anglických výuk aktivní verze.
+ * Vrátí počet upravených řádků.
+ */
+function odebratUciteleAJ(PDO $pdo): int {
+    $idVerze = getAktivniVerze($pdo);
+    $stmt = $pdo->prepare("
+        UPDATE ucitelpredmetprirazeni
+        SET teacherid = NULL
+        WHERE jazyk = 2
+          AND IdVerze = ?
+          AND teacherid IS NOT NULL
+    ");
+    $stmt->execute([$idVerze]);
+    return (int)$stmt->rowCount();
 }
 
 function getKatedraByZkratka($pdo, $zkratka, $idVerze = null) {
@@ -295,7 +471,7 @@ function onInit(PDO $pdo) {
     try {
         //$pdo->beginTransaction();
 
-        $pdo->exec("CREATE TABLE roky (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS roky (
             rok INT PRIMARY KEY,
             akademickyrok VARCHAR(10)
         )");
@@ -306,7 +482,7 @@ function onInit(PDO $pdo) {
             $stmt->execute([$year, $akademicky]);
         }
 
-        $pdo->exec("CREATE TABLE semestr (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS semestr (
             semestr VARCHAR(3) PRIMARY KEY,
             popis VARCHAR(15),
             aktualnisemestr INT DEFAULT 0,
@@ -315,7 +491,7 @@ function onInit(PDO $pdo) {
         $pdo->exec("INSERT INTO semestr (semestr, popis) VALUES ('ZS', 'Zimní semestr')");
         $pdo->exec("INSERT INTO semestr (semestr, popis) VALUES ('LS', 'Letní semestr')");
 
-        $pdo->exec("CREATE TABLE cisfakulta (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cisfakulta (
             idcis INT AUTO_INCREMENT PRIMARY KEY,
             zkratka VARCHAR(5),
             IdVerze INT
@@ -327,7 +503,7 @@ function onInit(PDO $pdo) {
             $stmt->execute([$fakulta]);
         }
 
-        $pdo->exec("CREATE TABLE pracoviste (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS pracoviste (
             idpracoviste INT PRIMARY KEY AUTO_INCREMENT,
             idpracovistestag INT NOT NULL,
             zkratka VARCHAR(7),
@@ -339,7 +515,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_pracoviste_zkratka (IdVerze, zkratka)
         )");
 
-        $pdo->exec("CREATE TABLE predmet (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS predmet (
             id INT PRIMARY KEY AUTO_INCREMENT,
             zkratka VARCHAR(20),
             nazev VARCHAR(255),
@@ -352,10 +528,14 @@ function onInit(PDO $pdo) {
             nahrazPredmety VARCHAR(100),
             idPracoviste INT,
             IdVerze INT,
+            typZkousky VARCHAR(50) DEFAULT NULL,
+            aSkut INT DEFAULT 0,
+            bSkut INT DEFAULT 0,
+            cSkut INT DEFAULT 0,
             UNIQUE KEY uniq_predmet (IdVerze, rok, semestr, zkratka)
         )");
 
-        $pdo->exec("CREATE TABLE predmetlast (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS predmetlast (
             id INT PRIMARY KEY AUTO_INCREMENT,
             zkratka VARCHAR(20),
             nazev VARCHAR(255),
@@ -371,7 +551,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_predmetlast (IdVerze, rok, semestr, zkratka)
         )");
 
-        $pdo->exec("CREATE TABLE studijniprogram (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS studijniprogram (
             idstudijniprogram INT PRIMARY KEY AUTO_INCREMENT,
             stprIdno INT,
             nazev VARCHAR(255),
@@ -387,7 +567,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_studijniprogram (IdVerze, stprIdno)
         )");
 
-        $pdo->exec("CREATE TABLE obor (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS obor (
             id INT AUTO_INCREMENT PRIMARY KEY,
             oborIdno INT NOT NULL,
             stprIdno INT NOT NULL,
@@ -402,7 +582,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_obor (IdVerze, oborIdno)
         )");
 
-        $pdo->exec("CREATE TABLE studijni_plan (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS studijni_plan (
             id INT AUTO_INCREMENT PRIMARY KEY,
             stplIdno INT NOT NULL,
             oborIdno INT NOT NULL,
@@ -419,7 +599,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_studijni_plan (IdVerze, stplIdno)
         )");
 
-        $pdo->exec("CREATE TABLE plan_predmet_obsazenost (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS plan_predmet_obsazenost (
             id INT AUTO_INCREMENT PRIMARY KEY,
             stplIdno INT NOT NULL,
             rocnik INT NOT NULL,
@@ -441,7 +621,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_plan_predmet_obs (IdVerze, stplIdno, rocnik, rok, semestr, roakIdno)
         )");
 
-        $pdo->exec("CREATE TABLE rocniky_studijniho_programu (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS rocniky_studijniho_programu (
             id INT AUTO_INCREMENT PRIMARY KEY,
             stprIdno INT NOT NULL,
             rocnik INT NOT NULL,
@@ -452,7 +632,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_rocnik_sp (idVerze, stprIdno, rocnik, idForma, jazyk)
         )");
 
-        $pdo->exec("CREATE TABLE teachers (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS teachers (
             id INT PRIMARY KEY AUTO_INCREMENT,
             name VARCHAR(50),
             surname VARCHAR(50),
@@ -466,7 +646,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_teacher (IdVerze, ucitIdno)
         )");
 
-        $pdo->exec("CREATE TABLE ucitelPredmety (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ucitelPredmety (
             id INT PRIMARY KEY AUTO_INCREMENT,
             ucitIdno INT,
             predmetzkratka VARCHAR(20),
@@ -475,7 +655,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_ucitelPredmety (IdVerze, ucitIdno, predmetzkratka)
         )");
 
-        $pdo->exec("CREATE TABLE ucitelpredmetlast (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ucitelpredmetlast (
             id INT PRIMARY KEY AUTO_INCREMENT,
             predmetid INT,
             teacherid INT,
@@ -487,7 +667,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_ucitelpredmetlast (IdVerze, predmetid, teacherid, typ)
         )");
 
-        $pdo->exec("CREATE TABLE ucitelpredmetprirazeni (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ucitelpredmetprirazeni (
             id INT PRIMARY KEY AUTO_INCREMENT,
             predmetid INT,
             teacherid INT NULL DEFAULT NULL,
@@ -495,20 +675,19 @@ function onInit(PDO $pdo) {
             typ VARCHAR(7),
             podil FLOAT DEFAULT 100,
             max_pocet_studentu INT NULL,
-            IdVerze INT,
-            UNIQUE KEY uniq_upp (predmetid, teacherid, typ, jazyk, IdVerze)
+            IdVerze INT
         )");
 
-        $pdo->exec("CREATE TABLE seq_ucitIdno (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS seq_ucitIdno (
             num INT
         )");
 
-        $pdo->exec("CREATE TABLE cistituly (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cistituly (
             id INT PRIMARY KEY AUTO_INCREMENT,
             zkratka VARCHAR(20)
         )");
 
-        $pdo->exec("CREATE TABLE verze (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS verze (
             IdVerze INT AUTO_INCREMENT PRIMARY KEY,
             Nazev VARCHAR(255) NOT NULL,
             Datum DATE NOT NULL
@@ -516,7 +695,7 @@ function onInit(PDO $pdo) {
 
         $pdo->exec("INSERT INTO verze (IdVerze, Nazev, Datum) VALUES (1, 'Výchozí', CURDATE())");
 
-        $pdo->exec("CREATE TABLE nastaveni (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS nastaveni (
             IdNastaveni INT AUTO_INCREMENT PRIMARY KEY,
             Nazev VARCHAR(100),
             Popis TEXT,
@@ -525,32 +704,32 @@ function onInit(PDO $pdo) {
             IdVerze INT
         )");
 
-        $pdo->exec("CREATE TABLE errnumber (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS errnumber (
             id INT AUTO_INCREMENT PRIMARY KEY,
             ucitIdno INT,
             idVerze INT
         )");
 
-        $pdo->exec("CREATE TABLE jazyk (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS jazyk (
             id INT AUTO_INCREMENT PRIMARY KEY,
             zkratka VARCHAR(7),
             popis VARCHAR(50),
             UNIQUE KEY uniq_jazyk_popis (popis)
         )");
 
-        $pdo->exec("CREATE TABLE cviceni_max_studenti (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cviceni_max_studenti (
             id INT AUTO_INCREMENT PRIMARY KEY,
             idUcitelPredmetPrirazeni INT,
             pocet INT
         )");
 
-        $pdo->exec("CREATE TABLE vyukove_jednotky (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS vyukove_jednotky (
             id INT AUTO_INCREMENT PRIMARY KEY,
             zkratka VARCHAR(20) UNIQUE NOT NULL,
             popis TEXT
         )");
 
-        $pdo->exec("CREATE TABLE predmet_hodiny (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS predmet_hodiny (
             id INT AUTO_INCREMENT PRIMARY KEY,
             predmetId INT NOT NULL,
             pocetJednotekSeminar INT DEFAULT 0,
@@ -563,12 +742,12 @@ function onInit(PDO $pdo) {
             FOREIGN KEY (predmetId) REFERENCES predmet(id)
         )");
 
-        $pdo->exec("CREATE TABLE typ_vyuky (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS typ_vyuky (
             id INT AUTO_INCREMENT PRIMARY KEY,
             nazev VARCHAR(20)
         )");
 
-        $pdo->exec("CREATE TABLE kontakt (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS kontakt (
             id INT AUTO_INCREMENT PRIMARY KEY,
             idTeacher INT,
             email VARCHAR(250),
@@ -577,7 +756,19 @@ function onInit(PDO $pdo) {
             idVerze INT
         )");
 
-        $pdo->exec("CREATE TABLE rozvrhova_akce (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS zkouseni_prirazeni (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            predmetid INT NOT NULL,
+            teacherid INT NOT NULL,
+            IdVerze INT NOT NULL,
+            pocet_kl INT DEFAULT 0,
+            pocet_zap INT DEFAULT 0,
+            pocet_zk INT DEFAULT 0,
+            pocet_dz INT DEFAULT 0,
+            UNIQUE KEY uniq_zkouseni (predmetid, teacherid, IdVerze)
+        )");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS rozvrhova_akce (
             id INT AUTO_INCREMENT PRIMARY KEY,
             roakIdno INT,
             predmet_zkratka VARCHAR(20),
@@ -593,7 +784,7 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_rozvrhova_akce (IdVerze, roakIdno)
         )");
 
-        $pdo->exec("CREATE TABLE rozvrhova_akce_ucitel (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS rozvrhova_akce_ucitel (
             id INT AUTO_INCREMENT PRIMARY KEY,
             roakIdno INT,
             ucitIdno INT,
@@ -602,12 +793,12 @@ function onInit(PDO $pdo) {
             UNIQUE KEY uniq_rozvrhova_akce_ucitel (IdVerze, roakIdno, ucitIdno)
         )");
 
-        $pdo->exec("CREATE TABLE seq_ucitIdnoExternista (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS seq_ucitIdnoExternista (
             id INT PRIMARY KEY,
             cislo INT
         )");
 
-        $pdo->exec("CREATE TABLE predmet_jazyk (
+        $pdo->exec("CREATE TABLE IF NOT EXISTS predmet_jazyk (
             id INT AUTO_INCREMENT PRIMARY KEY,
             predmetid INT NOT NULL,
             jazykid INT NOT NULL,
@@ -673,7 +864,14 @@ function onInit_Insert($pdo) {
 
 function getYear($pdo) {
     $rok = getCurrentVersionValue($pdo, 'AktivniRok', 'Hodnota');
-    return $rok ? (int)$rok : null;
+    if ($rok) {
+        return (int)$rok;
+    }
+    // Fallback: AktivniRok není nastaven – odvodíme akademický rok z aktuálního data.
+    // Akademický rok začíná v září; v září–prosinci je rok = aktuální, v lednu–srpnu = aktuální - 1.
+    $month = (int)date('n');
+    $year  = (int)date('Y');
+    return $month >= 9 ? $year : $year - 1;
 }
 
 function getSemestr($pdo) {
@@ -1155,7 +1353,7 @@ function getOboryStudijnihoProgramu($pdo, $stprIdno) {
     $rok = getYear($pdo);
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/programy/getOboryStudijnihoProgramu"
         . "?stprIdno=" . urlencode($stprIdno)
-        . "&rok=" . urlencode($rok)
+        . "&rok=" . urlencode((string)($rok ?? ''))
         . "&outputFormat=JSON";
 
     safeEcho("URL API getOboryStudijnihoProgramu: $api_url");
@@ -1257,14 +1455,14 @@ function insertPlanPredmetObsazenost($pdo, $stplIdno, $rocnik, $rok, $semestr, a
     }
 }
 
-function insertPredmet($pdo, $zkratka, $nazev, $cviciciUcitIdno, $seminariciUcitIdno, $prednasejiciUcitIdno, $vyucovaciJazyky, $rok, $semestr, $idPracoviste) {
+function insertPredmet($pdo, $zkratka, $nazev, $cviciciUcitIdno, $seminariciUcitIdno, $prednasejiciUcitIdno, $vyucovaciJazyky, $rok, $semestr, $idPracoviste, $typZkousky = null, $aSkut = 0, $bSkut = 0, $cSkut = 0) {
     try {
         $IdVerze = getAktivniVerze($pdo);
 
         $query = "
             INSERT INTO predmet
-            (zkratka, nazev, cviciciUcitIdno, seminariciUcitIdno, prednasejiciUcitIdno, vyucovaciJazyky, rok, semestr, IdVerze, idPracoviste)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (zkratka, nazev, cviciciUcitIdno, seminariciUcitIdno, prednasejiciUcitIdno, vyucovaciJazyky, rok, semestr, IdVerze, idPracoviste, typZkousky, aSkut, bSkut, cSkut)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 nazev = VALUES(nazev),
                 cviciciUcitIdno = VALUES(cviciciUcitIdno),
@@ -1273,6 +1471,10 @@ function insertPredmet($pdo, $zkratka, $nazev, $cviciciUcitIdno, $seminariciUcit
                 vyucovaciJazyky = VALUES(vyucovaciJazyky),
                 semestr = VALUES(semestr),
                 idPracoviste = COALESCE(VALUES(idPracoviste), idPracoviste),
+                typZkousky = VALUES(typZkousky),
+                aSkut = VALUES(aSkut),
+                bSkut = VALUES(bSkut),
+                cSkut = VALUES(cSkut),
                 id = LAST_INSERT_ID(id)
         ";
 
@@ -1287,7 +1489,11 @@ function insertPredmet($pdo, $zkratka, $nazev, $cviciciUcitIdno, $seminariciUcit
             $rok,
             $semestr,
             $IdVerze,
-            $idPracoviste
+            $idPracoviste,
+            $typZkousky,
+            (int)$aSkut,
+            (int)$bSkut,
+            (int)$cSkut,
         ]);
 
         $predmetId = (int)$pdo->lastInsertId();
@@ -1529,7 +1735,8 @@ function deleteAll($pdo) {
         'obor',
         'studijni_plan',
         'plan_predmet_obsazenost',
-        'rocniky_studijniho_programu'
+        'rocniky_studijniho_programu',
+        'zkouseni_prirazeni',
     ];
 
     foreach ($tables as $table) {
@@ -1603,9 +1810,9 @@ function getPredmetyByKatedra($pdo, $katedra, $semestr = null) {
     $semestr = normalizeImportSemestr($semestr, $pdo);
 
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/predmety/getPredmetyByKatedraFullInfo"
-        . "?semestr=" . urlencode($semestr)
-        . "&outputFormat=JSON&katedra=" . urlencode($katedra)
-        . "&rok=" . urlencode($year);
+        . "?semestr=" . urlencode((string)($semestr ?? ''))
+        . "&outputFormat=JSON&katedra=" . urlencode((string)($katedra ?? ''))
+        . "&rok=" . urlencode((string)($year ?? ''));
 
     safeEcho("URL API: $api_url");
 
@@ -1630,7 +1837,11 @@ function getPredmetyByKatedra($pdo, $katedra, $semestr = null) {
                 $predmet['vyucovaciJazyky'] ?? null,
                 $predmet['rok'] ?? $year,
                 $semestr,
-                $idPracoviste
+                $idPracoviste,
+                $predmet['typZkousky'] ?? null,
+                $predmet['aSkut'] ?? 0,
+                $predmet['bSkut'] ?? 0,
+                $predmet['cSkut'] ?? 0
             );
 
             insertPredmetHodiny(
@@ -1646,9 +1857,79 @@ function getPredmetyByKatedra($pdo, $katedra, $semestr = null) {
 
             insertPredmetJazyky($pdo, $predmetId, $predmet['vyucovaciJazyky'] ?? '');
         }
+
     } catch (Exception $e) {
         safeEcho("Error in getPredmetyByKatedra: " . $e->getMessage());
     }
+}
+
+/**
+ * Automaticky předvyplní tabulku zkouseni_prirazeni na základě ucitelpredmetprirazeni.
+ * Pro každého učitele a předmět vypočte výchozí počty studentů ke zkoušení
+ * jako (aSkut + bSkut + cSkut) × (podíl/100), přiřadí do správného sloupce dle typZkousky.
+ * Existující záznamy NEPŘEPISUJE – jen vkládá nové.
+ */
+function autoPopulateZkouseniPrirazeni(PDO $pdo): void
+{
+    $idVerze = getAktivniVerze($pdo);
+
+    // Načte všechny kombinace učitel+předmět s potřebnými daty.
+    // MAX() zajistí kompatibilitu s sql_mode=only_full_group_by.
+    // typZkousky a celkem_skut jsou vlastnosti předmětu (pro daný predmetid stejné pro všechny řádky).
+    // podil může mít více hodnot (P/C/S); bereme MAX – pro zkousení stačí jedno číslo na kombinaci.
+    $stmt = $pdo->prepare("
+        SELECT
+            upp.teacherid,
+            upp.predmetid,
+            MAX(upp.podil) AS podil,
+            MAX(p.typZkousky) AS typZkousky,
+            MAX(COALESCE(p.aSkut, 0) + COALESCE(p.bSkut, 0) + COALESCE(p.cSkut, 0)) AS celkem_skut
+        FROM ucitelpredmetprirazeni upp
+        JOIN predmet p ON p.id = upp.predmetid AND p.IdVerze = upp.IdVerze
+        WHERE upp.IdVerze = ?
+          AND upp.teacherid IS NOT NULL
+          AND p.typZkousky IS NOT NULL
+          AND p.typZkousky != 'Státní závěrečná zkouška'
+        GROUP BY upp.teacherid, upp.predmetid
+    ");
+    $stmt->execute([$idVerze]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $insertStmt = $pdo->prepare("
+        INSERT INTO zkouseni_prirazeni (predmetid, teacherid, IdVerze, pocet_kl, pocet_zap, pocet_zk, pocet_dz)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE IdVerze = IdVerze
+    ");
+
+    foreach ($rows as $r) {
+        $podil    = ((float)($r['podil'] ?? 100)) / 100;
+        $celkem   = (int)round($r['celkem_skut'] * $podil);
+        $typ      = $r['typZkousky'] ?? '';
+
+        $kl  = 0;
+        $zap = 0;
+        $zk  = 0;
+        $dz  = 0;
+
+        if ($typ === 'Klasifikovaný zápočet') {
+            $kl = $celkem;
+        } elseif ($typ === 'Zápočet') {
+            $zap = $celkem;
+        } elseif ($typ === 'Zkouška') {
+            $zk = $celkem;
+        } elseif ($typ === 'Dílčí zkouška') {
+            $dz = $celkem;
+        }
+
+        $insertStmt->execute([
+            $r['predmetid'],
+            $r['teacherid'],
+            $idVerze,
+            $kl, $zap, $zk, $dz,
+        ]);
+    }
+
+    safeEcho("Zkouseni_prirazeni: předvyplněno " . count($rows) . " záznamů.");
 }
 
 // function getOboryStudijnihoProgramu($pdo, $stprIdno) {
@@ -1665,7 +1946,7 @@ function getPlanyOboru($pdo, $oborIdno) {
     $rok = getYear($pdo);
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/programy/getPlanyOboru"
         . "?oborIdno=" . urlencode($oborIdno)
-        . "&rok=" . urlencode($rok)
+        . "&rok=" . urlencode((string)($rok ?? ''))
         . "&outputFormat=JSON";
 
     safeEcho("URL API getPlanyOboru: $api_url");
@@ -1705,7 +1986,7 @@ function getRozvrhByPlanForRocnik($pdo, $stplIdno, $rocnik, $semestr) {
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/rozvrhy/getRozvrhByPlan"
         . "?stplIdno=" . urlencode($stplIdno)
         . "&rocnik=" . urlencode($rocnik)
-        . "&rok=" . urlencode($rok)
+        . "&rok=" . urlencode((string)($rok ?? ''))
         . "&semestr=" . urlencode($semestr)
         . "&jenRozvrhoveAkce=true"
         . "&outputFormat=JSON";
@@ -1770,7 +2051,7 @@ function getStudijniProgram($pdo, $fakulta) {
     $rok = getYear($pdo);
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/programy/getStudijniProgramy"
         . "?kod=%25&pouzePlatne=true&fakulta=" . urlencode($fakulta)
-        . "&outputFormat=JSON&rok=" . urlencode($rok);
+        . "&outputFormat=JSON&rok=" . urlencode((string)($rok ?? ''));
 
     safeEcho("URL API getStudijniProgram: $api_url");
 
@@ -2309,6 +2590,9 @@ function insertAllKatedry($pdo) {
     insertTeacherAssingByLastYear($pdo);
     assignTeachersFromRozvrh($pdo);
     setPrvniKatedra($pdo);
+
+    // Předvyplnit zkouseni_prirazeni až TEĎ – ucitelpredmetprirazeni je již plná
+    autoPopulateZkouseniPrirazeni($pdo);
 }
 
 function vycistitPredmetJazyk($pdo) {
@@ -2851,6 +3135,36 @@ function getCviceniRozdeleniNahled($pdo) {
         ];
     }
     return $plan;
+}
+
+function importAllFakultyAKatedry($pdo) {
+    $idVerze = getAktivniVerze($pdo);
+
+    // Krok 1 – načíst fakulty z číselníku
+    $stmt = $pdo->query("SELECT zkratka FROM cisfakulta ORDER BY zkratka");
+    $fakulty = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    if (empty($fakulty)) {
+        // Záloha: hardcoded seznam UTB fakult
+        $fakulty = ['FAI', 'FAM', 'FLK', 'FMK', 'FHS', 'FT', 'IMS'];
+    }
+
+    safeEcho("=== Kompletní import UTB – " . count($fakulty) . " fakult ===\n");
+
+    // Krok 2 – pro každou fakultu: katedry, studijní programy, studijní plány
+    foreach ($fakulty as $fakulta) {
+        safeEcho("\n--- Fakulta: $fakulta ---\n");
+
+        getKatedry($pdo, $fakulta);
+        getStudijniProgram($pdo, $fakulta);
+        importStudijniPlanyAFakulty($pdo, $fakulta);
+    }
+
+    // Krok 3 – pro všechny načtené katedry: předměty, učitelé, rozvrh
+    safeEcho("\n=== Import dat všech kateder ===\n");
+    insertAllKatedry($pdo);
+
+    safeEcho("\n=== Kompletní import UTB dokončen ===\n");
 }
 
 /**

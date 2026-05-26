@@ -93,6 +93,10 @@ function exportUvazekDoExcelu(int $teacherId): string
     $sheet2->setCellValue("B20", $teacher['surname']); // příjmení
     $sheet2->setCellValue("B23", $rok);
 
+    // Respektuje globální nastavení ZahrnoutAJ
+    $zahrnoutAJ = getZahrnoutAJ($pdo);
+    $ajCondition = $zahrnoutAJ ? '' : 'AND upp.jazyk != 2';
+
     // BUG FIX: dotaz rozšířen o max_pocet_studentu pro výpočet počtu skupin
     $sql = "
         SELECT
@@ -114,6 +118,7 @@ function exportUvazekDoExcelu(int $teacherId): string
             ON p.id = ph.predmetid
         WHERE upp.teacherid = ?
           AND upp.IdVerze = ?
+          $ajCondition
         ORDER BY p.zkratka, p.semestr, upp.jazyk, upp.typ
     ";
 
@@ -128,76 +133,32 @@ function exportUvazekDoExcelu(int $teacherId): string
 
         if (!isset($grouped[$k])) {
             $grouped[$k] = [
-                'zkratka'            => $r['zkratka'],
-                'nazev'              => $r['nazev'],
-                'semestr'            => $r['semestr'] ?? null,
-                'jazyk'              => $r['jazyk'] ?? null,
-                'prednaska'          => 0,
-                'cviceni'            => 0,
-                'seminar'            => 0,
-                'max_studenti_cv'    => 0, // max studentů na skupinu cvičení
-                'max_studenti_sem'   => 0, // max studentů na skupinu semináře
+                'zkratka'   => $r['zkratka'],
+                'nazev'     => $r['nazev'],
+                'semestr'   => $r['semestr'] ?? null,
+                'jazyk'     => $r['jazyk'] ?? null,
+                'prednaska' => 0,
+                'cviceni'   => 0,
+                'seminar'   => 0,
+                'skupinyP'  => 0, // počet řádků s typ='P' = počet skupin přednášek
+                'skupinyC'  => 0, // počet řádků s typ='C' = počet skupin cvičení
+                'skupinyS'  => 0, // počet řádků s typ='S' = počet skupin semináře
             ];
         }
 
-        $podil = ((float)($r['podil'] ?? 0)) / 100;
         $typ = $r['typ'] ?? '';
-        $maxStudentu = (int)($r['max_pocet_studentu'] ?? 0);
 
+        // Hodiny za týden = hodnota z předmět_hodiny (nezávislá na počtu skupin)
+        // Skupiny = každý řádek v DB = jedna skupina daného učitele
         if ($typ === 'P') {
-            $grouped[$k]['prednaska'] += ((float)($r['pocetJednotekPrednaska'] ?? 0)) * $podil;
+            $grouped[$k]['skupinyP']++;
+            $grouped[$k]['prednaska'] = (float)($r['pocetJednotekPrednaska'] ?? 0);
         } elseif ($typ === 'C') {
-            $grouped[$k]['cviceni'] += ((float)($r['pocetJednotekCviceni'] ?? 0)) * $podil;
-            if ($maxStudentu > 0) {
-                $grouped[$k]['max_studenti_cv'] = max($grouped[$k]['max_studenti_cv'], $maxStudentu);
-            }
+            $grouped[$k]['skupinyC']++;
+            $grouped[$k]['cviceni'] = (float)($r['pocetJednotekCviceni'] ?? 0);
         } elseif ($typ === 'S') {
-            $grouped[$k]['seminar'] += ((float)($r['pocetJednotekSeminar'] ?? 0)) * $podil;
-            if ($maxStudentu > 0) {
-                $grouped[$k]['max_studenti_sem'] = max($grouped[$k]['max_studenti_sem'], $maxStudentu);
-            }
-        }
-    }
-
-    // BUG FIX: dotaz celkového počtu studentů na každý předmět (pro výpočet počtu skupin)
-    // Používáme data z plan_predmet_obsazenost + rocniky_studijniho_programu
-    $subjectKeys = [];
-    foreach ($grouped as $item) {
-        $subjectKeys[$item['zkratka'] . '_' . ($item['semestr'] ?? '')] = true;
-    }
-
-    $poctyStudentu = []; // klíč: 'zkratka_semestr' => int
-    if (!empty($subjectKeys)) {
-        $zkratkyList = array_unique(array_column(array_values($grouped), 'zkratka'));
-        $placeholders = implode(',', array_fill(0, count($zkratkyList), '?'));
-        $stmtSt = $pdo->prepare("
-            SELECT
-                p.zkratka,
-                p.semestr,
-                COALESCE(SUM(DISTINCT rsp.pocetStudentu), 0) AS pocet_studentu
-            FROM predmet p
-            LEFT JOIN plan_predmet_obsazenost ppo
-                ON ppo.predmet_zkratka = p.zkratka
-               AND ppo.rok = p.rok
-               AND ppo.semestr = p.semestr
-               AND ppo.IdVerze = p.IdVerze
-               AND ppo.platnost = 'A'
-            LEFT JOIN studijni_plan spl ON spl.stplIdno = ppo.stplIdno AND spl.IdVerze = p.IdVerze
-            LEFT JOIN obor o ON o.oborIdno = spl.oborIdno AND o.IdVerze = p.IdVerze
-            LEFT JOIN studijniprogram sp ON sp.stprIdno = o.stprIdno AND sp.IdVerze = p.IdVerze
-            LEFT JOIN rocniky_studijniho_programu rsp
-                ON rsp.stprIdno = sp.stprIdno
-               AND rsp.rocnik = ppo.rocnik
-               AND rsp.idForma = sp.idForma
-               AND rsp.jazyk = sp.jazyk
-               AND rsp.idVerze = p.IdVerze
-            WHERE p.zkratka IN ($placeholders)
-              AND p.IdVerze = ?
-            GROUP BY p.zkratka, p.semestr
-        ");
-        $stmtSt->execute(array_merge($zkratkyList, [$idVerze]));
-        foreach ($stmtSt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $poctyStudentu[$row['zkratka'] . '_' . $row['semestr']] = (int)$row['pocet_studentu'];
+            $grouped[$k]['skupinyS']++;
+            $grouped[$k]['seminar'] = (float)($r['pocetJednotekSeminar'] ?? 0);
         }
     }
 
@@ -256,37 +217,27 @@ function exportUvazekDoExcelu(int $teacherId): string
             $druh = 'c';
         }
 
-        // BUG FIX: výpočet počtu skupin z celkového počtu studentů a max. kapacity skupiny
-        // Přednáška: 1 skupina (všichni studenti dohromady)
-        $skupinyP = 1;
-        $skupinyC = 1;
-        $skupinyS = 1;
-
-        $pocetStudentu = $poctyStudentu[$item['zkratka'] . '_' . ($item['semestr'] ?? '')] ?? 0;
-
-        if ($pocetStudentu > 0 && $item['max_studenti_cv'] > 0) {
-            $skupinyC = max(1, (int)ceil($pocetStudentu / $item['max_studenti_cv']));
-        }
-        if ($pocetStudentu > 0 && $item['max_studenti_sem'] > 0) {
-            $skupinyS = max(1, (int)ceil($pocetStudentu / $item['max_studenti_sem']));
-        }
+        // Skupiny = počet řádků v DB pro daného učitele a typ výuky
+        $skupinyP = $item['skupinyP'];
+        $skupinyC = $item['skupinyC'];
+        $skupinyS = $item['skupinyS'];
 
         $sheet1->setCellValue("A{$currentRow}", $item['zkratka']); // kód
         $sheet1->setCellValue("B{$currentRow}", $druh);            // druh
         $sheet1->setCellValue("C{$currentRow}", $zs);              // ZS týdny
         $sheet1->setCellValue("D{$currentRow}", $ls);              // LS týdny
 
-        // Rozvrhové hodiny týdně
-        $sheet1->setCellValue("E{$currentRow}", $item['prednaska']);
-        $sheet1->setCellValue("F{$currentRow}", $item['cviceni']);
-        $sheet1->setCellValue("G{$currentRow}", $item['seminar']);
-        $sheet1->setCellValue("H{$currentRow}", 0); // ateliér
+        // Rozvrhové hodiny týdně – nuly jako prázdné buňky
+        $sheet1->setCellValue("E{$currentRow}", $item['prednaska'] ?: null);
+        $sheet1->setCellValue("F{$currentRow}", $item['cviceni']   ?: null);
+        $sheet1->setCellValue("G{$currentRow}", $item['seminar']   ?: null);
+        $sheet1->setCellValue("H{$currentRow}", null); // ateliér – vždy prázdné
 
-        // Skupiny
-        $sheet1->setCellValue("I{$currentRow}", $skupinyP);
-        $sheet1->setCellValue("J{$currentRow}", $skupinyC);
-        $sheet1->setCellValue("K{$currentRow}", $skupinyS);
-        $sheet1->setCellValue("L{$currentRow}", 1); // ateliér skupiny
+        // Skupiny – nuly jako prázdné buňky
+        $sheet1->setCellValue("I{$currentRow}", $skupinyP ?: null);
+        $sheet1->setCellValue("J{$currentRow}", $skupinyC ?: null);
+        $sheet1->setCellValue("K{$currentRow}", $skupinyS ?: null);
+        $sheet1->setCellValue("L{$currentRow}", null); // ateliér skupiny – vždy prázdné
 
         // Pracovní body – pro ZS bereme C, pro LS D
         $tydnyCell = ($semestrPredmetu === 'LS') ? "D{$currentRow}" : "C{$currentRow}";
@@ -297,6 +248,68 @@ function exportUvazekDoExcelu(int $teacherId): string
         $sheet1->setCellValue("P{$currentRow}", "=H{$currentRow}*{$tydnyCell}*L{$currentRow}");
 
         $currentRow++;
+    }
+
+    // =========================================================
+    // ČÁST A.2 – ZKOUŠENÍ
+    // =========================================================
+
+    // Načti data A.2 pro tohoto učitele z zkouseni_prirazeni
+    $stmtA2 = $pdo->prepare("
+        SELECT
+            p.zkratka,
+            zp.pocet_kl,
+            zp.pocet_zap,
+            zp.pocet_zk,
+            zp.pocet_dz
+        FROM zkouseni_prirazeni zp
+        JOIN predmet p ON p.id = zp.predmetid AND p.IdVerze = zp.IdVerze
+        WHERE zp.teacherid = ?
+          AND zp.IdVerze   = ?
+          AND (zp.pocet_kl + zp.pocet_zap + zp.pocet_zk + zp.pocet_dz) > 0
+        ORDER BY p.zkratka
+    ");
+    $stmtA2->execute([$teacherId, $idVerze]);
+    $a2Rows = $stmtA2->fetchAll(PDO::FETCH_ASSOC);
+
+    // Počet řádků vložených pro A.1 (posun A.2 sekce)
+    $a1RowsInserted = max(0, $neededRows - $templateDataRows);
+
+    // Pozice A.2 datové oblasti v šabloně (27–38 = 12 řádků), posunuté o A.1 overflow
+    $a2StartRow        = 27 + $a1RowsInserted;
+    $a2TemplateLastRow = 38 + $a1RowsInserted;
+    $a2TemplateRows    = 12; // šablona má 12 datových řádků pro A.2
+    $a2SummaryRow      = 39 + $a1RowsInserted; // A.3 header
+
+    $a2NeededRows = count($a2Rows);
+
+    if ($a2NeededRows > $a2TemplateRows) {
+        $a2ToInsert = $a2NeededRows - $a2TemplateRows;
+        $sheet1->insertNewRowBefore($a2SummaryRow, $a2ToInsert);
+        for ($i = 0; $i < $a2ToInsert; $i++) {
+            $targetRow = $a2TemplateLastRow + 1 + $i;
+            duplicateRowStyle($sheet1, $a2TemplateLastRow, $targetRow, 'A', 'I');
+        }
+    }
+
+    // Vyčistit oblast A.2
+    $a2EndWriteRow = max($a2TemplateLastRow, $a2StartRow + $a2NeededRows - 1);
+    for ($row = $a2StartRow; $row <= $a2EndWriteRow; $row++) {
+        foreach (['A','B','C','D','E'] as $col) {
+            $sheet1->setCellValue($col . $row, null);
+        }
+    }
+
+    // Zápis dat A.2
+    $a2CurrentRow = $a2StartRow;
+    foreach ($a2Rows as $a2) {
+        $sheet1->setCellValue("A{$a2CurrentRow}", $a2['zkratka']);
+        $sheet1->setCellValue("B{$a2CurrentRow}", (int)$a2['pocet_kl']  ?: null);
+        $sheet1->setCellValue("C{$a2CurrentRow}", (int)$a2['pocet_zap'] ?: null);
+        $sheet1->setCellValue("D{$a2CurrentRow}", (int)$a2['pocet_zk']  ?: null);
+        $sheet1->setCellValue("E{$a2CurrentRow}", (int)$a2['pocet_dz']  ?: null);
+        // Sloupce F–I mají v šabloně vzorce =B*koef atd. – necháme je živé
+        $a2CurrentRow++;
     }
 
     $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');

@@ -7,6 +7,9 @@ services:
       - "8080:80"
     volumes:
       - .:/var/www/html
+    environment:
+      STAG_USERNAME: "tvePrihlasovaci"
+      STAG_PASSWORD: "tveHeslo"
     depends_on:
       - db
 

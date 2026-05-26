@@ -4,6 +4,7 @@ require_once '../includes/functions.php';
 
 $pdo = connectToDatabase();
 $verze = getAktivniVerze($pdo);
+$zahrnoutAJ = getZahrnoutAJ($pdo);
 
 // -----------------------------
 // FILTRY / ŘAZENÍ / STRÁNKOVÁNÍ
@@ -133,6 +134,10 @@ if ($filtrUcitel !== '') {
 if ($filtrSemestr !== '') {
     $where[] = "p.semestr = ?";
     $params[] = $filtrSemestr;
+}
+
+if (!$zahrnoutAJ) {
+    $where[] = "upp.jazyk != 2";
 }
 
 $whereSql = 'WHERE ' . implode(' AND ', $where);
@@ -383,6 +388,64 @@ function renderStateFields($verze, $vybranaKatedra, $filtrFakulta, $filtrNazev, 
 <body>
 
     <h1>Počítání výsledků</h1>
+
+    <?php
+    // Flash zprávy – výsledky akcí (uložení, kopírování, chyby)
+    if (isset($_GET['copied'])):
+    ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Záznam byl zkopírován. Nový řádek najdete níže – upravte ho dle potřeby.
+        </div>
+    <?php elseif (isset($_GET['error'])): ?>
+        <div style="background:#f8d7da; border:1px solid #dc3545; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#721c24;">
+            <?php
+            $err = $_GET['error'];
+            $msg = $_GET['msg'] ?? '';
+            if ($err === 'db' && str_contains($msg, 'Duplicate')) {
+                echo '⚠ Kopírování selhalo: záznam se stejnou kombinací předmětu, učitele, typu a jazyka již existuje. Pokud chcete více skupin cvičení/semináře, nastavte <strong>Max. počet studentů</strong> na skupinu a systém skupiny vypočítá automaticky.';
+            } elseif ($err === 'db') {
+                echo '⚠ Chyba databáze: ' . htmlspecialchars($msg);
+            } elseif ($err === 'not_found') {
+                echo '⚠ Záznam nebyl nalezen.';
+            } elseif ($err === 'unknown_action') {
+                echo '⚠ Neznámá akce.';
+            } else {
+                echo '⚠ Chyba: ' . htmlspecialchars($err);
+            }
+            ?>
+        </div>
+    <?php elseif (isset($_GET['updated'])): ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Záznam byl uložen.
+        </div>
+    <?php elseif (isset($_GET['updated_all'])): ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Všechny záznamy na stránce byly uloženy.
+        </div>
+    <?php elseif (isset($_GET['deleted'])): ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Záznam byl smazán.
+        </div>
+    <?php elseif (isset($_GET['cleared'])): ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Učitel byl odebrán ze záznamu.
+        </div>
+    <?php endif; ?>
+
+    <?php if (!$zahrnoutAJ): ?>
+        <div style="background:#fff3cd; border:1px solid #ffc107; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#7a5a00;">
+            ⚠ <strong>Anglické výuky jsou skryty.</strong>
+            Zobrazují se pouze česky vyučované předměty.
+            Nastavení změníš v <a href="insert1.php">Import dat → Nastavení anglických výuk</a>.
+        </div>
+    <?php endif; ?>
 
     <form method="GET" class="filters-box">
         <div class="field">

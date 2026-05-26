@@ -1,0 +1,815 @@
+\documentclass[12pt,a4paper]{report}
+
+% --- PACKAGES ---
+% XeLaTeX / LuaLaTeX: nativni UTF-8, nepotrebuje inputenc
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{czech}
+\setmainfont{Latin Modern Roman}
+\setmonofont{Latin Modern Mono}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{lmodern}
+
+% --- PAGE GEOMETRY ---
+\geometry{
+  a4paper,
+  left=3.5cm,
+  right=2.5cm,
+  top=2.5cm,
+  bottom=2.5cm
+}
+
+% --- LINE SPACING ---
+\onehalfspacing
+
+% --- HEADER / FOOTER ---
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Systém pro správu pedagogické zátěže UTB}
+\fancyhead[R]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% --- HYPERREF ---
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  citecolor=black,
+  pdftitle={Systém pro správu pedagogické zátěže UTB -- Dokumentace},
+  pdfauthor={Daniel Gágyor},
+}
+
+% --- LISTINGS (code) ---
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0.0,0.5,0.0}
+\definecolor{codepurple}{rgb}{0.58,0.0,0.82}
+\definecolor{codered}{rgb}{0.7,0.0,0.0}
+
+\lstdefinestyle{phpstyle}{
+  backgroundcolor=\color{codegray},
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{codered}\bfseries,
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\small,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  keepspaces=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  showspaces=false,
+  showstringspaces=false,
+  tabsize=4,
+  frame=single,
+  framerule=0.4pt,
+  language=PHP
+}
+
+\lstdefinestyle{sqlstyle}{
+  backgroundcolor=\color{codegray},
+  commentstyle=\color{codegreen},
+  keywordstyle=\color{codered}\bfseries,
+  stringstyle=\color{codepurple},
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  frame=single,
+  language=SQL
+}
+
+\lstset{style=phpstyle}
+
+% ===================================================================
+\begin{document}
+% ===================================================================
+
+% --- TITLE PAGE ---
+\begin{titlepage}
+  \centering
+  \vspace*{2cm}
+  {\Large Univerzita Tomáše Bati ve Zlíně\\
+  Fakulta aplikované informatiky\par}
+  \vspace{3cm}
+  {\LARGE\bfseries Systém pro správu pedagogické zátěže UTB\par}
+  \vspace{1cm}
+  {\large Bakalářská práce -- Technická dokumentace\par}
+  \vfill
+  {\large Autor: Daniel Gágyor\par}
+  {\large Vedoucí práce: \textit{[doplnit]}\par}
+  \vspace{0.5cm}
+  {\large Zlín, 2025\par}
+\end{titlepage}
+
+% --- ABSTRACT ---
+\chapter*{Abstrakt}
+Tato dokumentace popisuje návrh, implementaci a testování webové aplikace určené ke správě pedagogické zátěže vyučujících Univerzity Tomáše Bati ve Zlíně (UTB). Aplikace automatizovaně stahuje data z informačního systému STAG prostřednictvím REST API, ukládá je do relační databáze MySQL a umožňuje jejich správu, ruční editaci a export do standardizovaných tabulkových šablon formátu XLSX. Výsledkem je nástroj, který zjednodušuje a urychluje administrativní procesy spojené s evidencí výuky, přiřazováním učitelů k předmětům a generováním přehledů pro vedení kateder.
+
+\vspace{1em}
+\textbf{Klíčová slova:} PHP, MySQL, STAG API, Docker, PhpSpreadsheet, pedagogická zátěž, UTB, webová aplikace
+
+\tableofcontents
+\listoftables
+
+\newpage
+
+% ===================================================================
+\chapter{Analýza požadavků}
+% ===================================================================
+
+\section{Kontext a motivace}
+
+Katedry Univerzity Tomáše Bati ve Zlíně potřebují pravidelně evidovat a reportovat pedagogickou zátěž svých vyučujících. Tento proces byl dříve prováděn manuálně v tabulkách Microsoft Excel, což bylo náchylné k chybám, obtížně udržitelné a časově náročné. Cílem projektu bylo vytvořit webovou aplikaci, která tento proces automatizuje -- od stažení dat ze systému STAG přes jejich uložení do databáze až po export do předepsaných šablon XLSX.
+
+\section{Funkční požadavky}
+
+\begin{enumerate}
+  \item Připojení k REST API systému STAG (UTB) s autentizací a opakováním požadavků při výpadku.
+  \item Import dat: fakult, kateder, studijních programů, oborů, plánů, předmětů, vyučujících a rozvrhových akcí.
+  \item Správa verzí dat -- každý import vytváří nebo aktualizuje verzi; historická data jsou zachována.
+  \item Manuální editace importovaných dat (počty studentů, přiřazení učitelů).
+  \item Podpora zkušebního modulu (zkouseni.php) pro evidenci zkoušení.
+  \item Export do XLSX šablon (Příloha 1 a Příloha 2) pomocí PhpSpreadsheet.
+  \item Nastavení systému: správa akademického roku, semestru, kateder, titulů.
+  \item Přehled učitelů a jejich úvazků (uvazek-ucitele.php).
+\end{enumerate}
+
+\section{Nefunkční požadavky}
+
+\begin{itemize}
+  \item Provozuschopnost v Docker kontejnerech (PHP-FPM, Nginx, MySQL, phpMyAdmin).
+  \item Idempotentní databázové migrace -- aplikace se může připojit k prázdné i existující databázi.
+  \item Odolnost vůči dočasným výpadkům STAG API (retry logika s exponenciálním čekáním).
+  \item Správné ošetření chybových stavů: výjimky jsou zachyceny, logovány a zobrazeny uživateli.
+  \item Bezpečné zpracování vstupů: \texttt{htmlspecialchars()}, prepared statements, CSRF ochrana.
+\end{itemize}
+
+% ===================================================================
+\chapter{Použité technologie}
+% ===================================================================
+
+\section{PHP 8.2}
+
+Serverová logika je implementována v jazyce PHP verze 8.2 \cite{php82}. Aplikace využívá:
+\begin{itemize}
+  \item \textbf{PDO} (PHP Data Objects) pro přístup k databázi s prepared statements,
+  \item \textbf{file\_get\_contents()} s kontextem pro volání REST API,
+  \item \textbf{json\_decode()} pro zpracování odpovědí STAG API,
+  \item jmenné prostory a autoloading prostřednictvím Composeru pro PhpSpreadsheet.
+\end{itemize}
+
+\section{MySQL 8.0}
+
+Relační databáze MySQL 8.0 \cite{mysql80} ukládá veškerá importovaná data. Klíčovými aspekty jsou:
+\begin{itemize}
+  \item charset \texttt{utf8mb4} pro plnou podporu Unicode,
+  \item \texttt{sql\_mode=STRICT\_TRANS\_TABLES,NO\_ENGINE\_SUBSTITUTION} (bez \texttt{ONLY\_FULL\_GROUP\_BY}),
+  \item transakční integrita při vkládání dat (InnoDB engine).
+\end{itemize}
+
+\section{Docker Compose}
+
+Celé prostředí je kontejnerizováno pomocí Docker Compose \cite{docker}:
+\begin{itemize}
+  \item \textbf{db} -- MySQL 8.0 s trvalým volume,
+  \item \textbf{app} -- PHP 8.2-FPM s Composerem a rozšířením pdo\_mysql, zip,
+  \item \textbf{nginx} -- reverzní proxy mapující port 8080,
+  \item \textbf{phpmyadmin} -- webové rozhraní pro správu DB (port 8081).
+\end{itemize}
+
+\section{PhpSpreadsheet}
+
+Knihovna PhpSpreadsheet \cite{phpspreadsheet} umožňuje čtení a zápis souborů XLSX. V aplikaci se používá přístup přes šablonu: existující soubor šablony je otevřen, naplněn daty a uložen jako nový výstupní soubor. Tím je zachováno formátování definované v šabloně.
+
+\section{STAG REST API}
+
+Systém STAG (Studijní a Zkušební Agenda) \cite{stagapi} UTB poskytuje REST API s JSON výstupy. Autentizace probíhá přes HTTP Basic Auth. Aplikace volá osm hlavních endpointů (viz kapitola~\ref{chap:import}).
+
+\section{Git}
+
+Správa verzí zdrojového kódu probíhá prostřednictvím systému Git \cite{git}. Repozitář slouží jako záloha kódu a umožňuje obnovu při neúmyslném poškození souborů (například při nesprávném použití příkazu \texttt{sed}).
+
+% ===================================================================
+\chapter{Architektura a datový model}
+% ===================================================================
+
+\section{Přehled architektury}
+
+Aplikace využívá klasickou třívrstvou architekturu:
+\begin{enumerate}
+  \item \textbf{Prezentační vrstva} -- PHP stránky v adresáři \texttt{pages/} generující HTML.
+  \item \textbf{Aplikační vrstva} -- pomocné funkce v \texttt{includes/functions.php} a dalších souborech.
+  \item \textbf{Datová vrstva} -- MySQL databáze přístupná přes \texttt{includes/dbh.inc.php}.
+\end{enumerate}
+
+Veškerá komunikace se STAG API probíhá v aplikační vrstvě. Funkce \texttt{stagGetJson()} implementuje opakování požadavků, dekódování JSON a fallback s čištěním neplatných znaků.
+
+\section{Správa verzí dat}
+
+Klíčovým konceptem je \textbf{versioning} dat. Každá sada importovaných dat je svázána s verzí (tabulka \texttt{verze}), která obsahuje:
+\begin{itemize}
+  \item \texttt{IdVerze} -- primární klíč verze,
+  \item \texttt{AktivniRok} -- akademický rok (např. 2024),
+  \item \texttt{Semestr} -- ZS nebo LS,
+  \item \texttt{AktivniKatedra} -- zkratka katedry.
+\end{itemize}
+
+Aktivní verze je určena hodnotami v tabulce \texttt{nastaveni}. Historická data starší verze nejsou smazána, ale přestávají být zobrazována. Unikátní klíče tabulek jsou navrženy tak, aby při re-importu došlo k aktualizaci (\texttt{ON DUPLICATE KEY UPDATE}) a ne k duplikaci.
+
+\section{Databázový model}
+
+Databáze obsahuje 31 tabulek vytvářených při inicializaci (\texttt{onInit()}) a~5 migračních tabulek/pohledů. Hlavní entity jsou:
+
+\begin{longtable}{>{\ttfamily}lp{8cm}}
+  \toprule
+  \textbf{Tabulka} & \textbf{Popis} \\
+  \midrule
+  \endfirsthead
+  \midrule
+  \textbf{Tabulka} & \textbf{Popis} \\
+  \midrule
+  \endhead
+  verze & Verze importu (rok, semestr, katedra) \\
+  nastaveni & Systémová nastavení (aktivní verze, katedra aj.) \\
+  cisfakulta & Číselník fakult UTB \\
+  pracoviste & Organizační jednotky (katedry, ústavy) \\
+  ucitel & Vyučující (jméno, příjmení, STAG ID) \\
+  kontakt\_ucitel & Kontaktní údaje učitelů \\
+  studijni\_program & Studijní programy \\
+  obor & Obory studijního programu \\
+  studijni\_plan & Studijní plány oborů \\
+  predmet & Předměty (zkratka, název, typ zkoušky) \\
+  predmet\_jazyk & Vyučovací jazyky předmětu \\
+  predmet\_hodiny & Počty vyučovacích hodin \\
+  ucitelpredmetprirazeni & Přiřazení učitelů k předmětům (aktuální rok) \\
+  rokniky\_studijniho\_programu & Ročníky SP s počtem studentů \\
+  plan\_predmet\_obsazenost & Obsazenost předmětů v plánech \\
+  zkouseni\_prirazeni & Přiřazení ke zkoušení \\
+  rozvrhova\_akce & Rozvrhové akce z minulého roku \\
+  rozvrhova\_akce\_ucitel & Učitelé přiřazení k rozvrhové akci \\
+  \bottomrule
+  \caption{Hlavní tabulky databázového modelu}
+\end{longtable}
+
+\section{Idempotentní migrace}
+
+Funkce \texttt{runMigrations()} je volána při každém připojení k databázi. Každá migrace kontroluje, zda tabulka nebo pohled již existuje v \texttt{information\_schema}, a~pokud ne, vytvoří ji. Tím je zaručena idempotentnost -- migrace lze spouštět opakovaně bez vedlejších efektů.
+
+\begin{lstlisting}[caption={Ukázka migrace s kontrolou existence tabulky}]
+$exists = $pdo->query(
+    "SELECT COUNT(*) FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'predmet_jazyk'"
+)->fetchColumn();
+
+if (!$exists) {
+    $pdo->exec("CREATE TABLE predmet_jazyk (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        predmetid INT NOT NULL,
+        jazykid INT NOT NULL,
+        UNIQUE KEY uniq_predmet_jazyk (predmetid, jazykid)
+    )");
+}
+\end{lstlisting}
+
+% ===================================================================
+\chapter{Logika importu dat ze STAG API}
+\label{chap:import}
+% ===================================================================
+
+\section{Přehled importovaných dat}
+
+Import dat ze STAG probíhá přes osm hlavních API endpointů:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lp{7cm}}
+\toprule
+\textbf{Endpoint} & \textbf{Data} \\
+\midrule
+\texttt{/ciselniky/getFakulty} & Seznam fakult UTB \\
+\texttt{/pracoviste/getPracoviste} & Katedry a pracoviště \\
+\texttt{/studijniProgramy/getStudijniProgramy} & Studijní programy \\
+\texttt{/studijniProgramy/getObory} & Obory SP \\
+\texttt{/studijniProgramy/getStudijniPlany} & Studijní plány oborů \\
+\texttt{/predmety/getPredmety} & Předměty dle plánu a ročníku \\
+\texttt{/ucitel/getUcitele} & Vyučující katedry \\
+\texttt{/rozvrh/getRozvrhoveAkce} & Rozvrhové akce \\
+\bottomrule
+\end{tabular}
+\caption{STAG API endpointy používané aplikací}
+\end{table}
+
+\section{Funkce stagGetJson()}
+
+Centrální komunikační funkce \texttt{stagGetJson()} zajišťuje:
+\begin{enumerate}
+  \item HTTP GET požadavek s Basic Auth hlavičkou.
+  \item Opakování až 3× při výpadku (\texttt{sleepMs = 800 ms}).
+  \item Pokus o opravu neplatného JSON (odstranění BOM, kontrolní znaků).
+  \item Vyhození výjimky \texttt{Exception} při trvalém selhání.
+\end{enumerate}
+
+\begin{lstlisting}[caption={Jádro funkce stagGetJson() -- retry logika}]
+for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+    $context = stagAuthContext();
+    $response = @file_get_contents($url, false, $context);
+
+    if ($response === false) {
+        $err = error_get_last();
+        $lastError = $err['message'] ?? 'Neznama chyba';
+        if ($attempt < $maxAttempts) {
+            usleep($sleepMs * 1000);
+            continue;
+        }
+        break;
+    }
+
+    $data = json_decode($response, true);
+    if ($data !== null || json_last_error() === JSON_ERROR_NONE) {
+        return $data;
+    }
+    // ... fallback: cisteni BOM a kontrolnich znaku
+}
+throw new Exception("STAG request failed after {$maxAttempts} attempts: $url");
+\end{lstlisting}
+
+\section{Průběh kompletního importu}
+
+Funkce \texttt{importAllFakultyAKatedry()} orchestruje celý import v tomto pořadí:
+\begin{enumerate}
+  \item Načtení seznamu fakult z tabulky \texttt{cisfakulta} (fallback na pevný seznam FAI, FAM, \ldots).
+  \item Pro každou fakultu: import kateder (\texttt{getKatedry()}), studijních programů (\texttt{getStudijniProgram()}), studijních plánů (\texttt{importStudijniPlanyAFakulty()}).
+  \item Import dat všech kateder: \texttt{insertAllKatedry()}.
+\end{enumerate}
+
+Funkce \texttt{importStudijniPlanyAFakulty()} pro každou fakultu:
+\begin{enumerate}
+  \item Stáhne obory (\texttt{getOboryStudijnihoProgramu()}).
+  \item Pro každý obor stáhne studijní plány (\texttt{getPlanyOboru()}).
+  \item Pro každý plán a každý ročník stáhne rozvrhové akce (\texttt{getRozvrhByPlanForRocnik()}) a předměty.
+\end{enumerate}
+
+\section{Logika INSERT ... ON DUPLICATE KEY UPDATE}
+
+Aby re-import nepřepisoval manuálně editovaná data (např. počty studentů), používají kritické tabulky vzor:
+
+\begin{lstlisting}[style=sqlstyle, caption={Zachování manuálních úprav při re-importu}]
+INSERT INTO predmet (zkratka, nazev, rok, semestr, IdVerze, ...)
+VALUES (?, ?, ?, ?, ?, ...)
+ON DUPLICATE KEY UPDATE
+    IdVerze = IdVerze   -- no-op: zachova puvodni data
+\end{lstlisting}
+
+\section{Akademický rok -- fallback logika}
+
+Funkce \texttt{getYear()} vrátí aktivní rok z nastavení, nebo automaticky určí rok podle aktuálního měsíce:
+
+\begin{lstlisting}[caption={Fallback určení akademického roku}]
+function getYear($pdo) {
+    $rok = getCurrentVersionValue($pdo, 'AktivniRok', 'Hodnota');
+    if ($rok) {
+        return (int)$rok;
+    }
+    $month = (int)date('n');
+    $year  = (int)date('Y');
+    return $month >= 9 ? $year : $year - 1;
+}
+\end{lstlisting}
+
+% ===================================================================
+\chapter{Logika exportu do XLSX}
+% ===================================================================
+
+\section{Architektura exportu}
+
+Export je implementován v \texttt{includes/export-functions.php} a spouštěn z \texttt{pages/export.php} resp. \texttt{pages/export-uvazek.php}. Využívá knihovnu PhpSpreadsheet \cite{phpspreadsheet} a přístup přes šablonu:
+
+\begin{enumerate}
+  \item Načtení šablonového souboru (\texttt{templates/priloha1.xlsx}, \texttt{templates/priloha2.xlsx}).
+  \item Naplnění dat do buněk metodou \texttt{setCellValue()}.
+  \item Dynamické přidávání řádků pomocí \texttt{insertNewRowBefore()}.
+  \item Uložení výstupního souboru jako \texttt{Xlsx} do \texttt{php://output} pro stažení.
+\end{enumerate}
+
+\section{Příloha 1 -- Přehled pedagogické zátěže katedry}
+
+Příloha 1 exportuje celkový přehled předmětů katedry pro daný semestr a akademický rok. Sloupce A--P obsahují:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{cl}
+\toprule
+\textbf{Sloupec} & \textbf{Obsah} \\
+\midrule
+A & Pořadové číslo \\
+B & Zkratka předmětu \\
+C & Název předmětu \\
+D & Typ zkoušky \\
+E & Přednášky (hod./týden) \\
+F & Cvičení (hod./týden) \\
+G & Semináře (hod./týden) \\
+H & Celkem skupin \\
+I & Počet studentů \\
+J & Přednášející \\
+K & Cvičící \\
+L & Seminaristi \\
+M & Forma výuky \\
+N & Jazyk výuky \\
+O & Studijní program \\
+P & Poznámka \\
+\bottomrule
+\end{tabular}
+\caption{Struktura Přílohy 1}
+\end{table}
+
+\section{Příloha 2 -- Rozpad předmětů dle studijních programů}
+
+Příloha 2 (\texttt{getA2RozpadPredmetProgramRocnik()}) exportuje rozpad každého předmětu podle studijních programů a ročníků. Sloupce A--E:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{cl}
+\toprule
+\textbf{Sloupec} & \textbf{Obsah} \\
+\midrule
+A & Zkratka předmětu \\
+B & Studijní program \\
+C & Ročník \\
+D & Forma (P/K/D) \\
+E & Počet studentů \\
+\bottomrule
+\end{tabular}
+\caption{Struktura Přílohy 2}
+\end{table}
+
+\section{Export úvazku učitele}
+
+Funkce exportu úvazku (\texttt{export-uvazek.php}) generuje individuální přehled pro konkrétního učitele, obsahující všechny předměty, ke kterým je přiřazen, s rozpadem dle semestrů a studijních programů.
+
+% ===================================================================
+\chapter{Modul zkoušení}
+% ===================================================================
+
+\section{Přehled modulu}
+
+Modul zkoušení (\texttt{pages/zkouseni.php}) slouží k evidenci přiřazení učitelů ke zkoušení studentů. Nabízí interaktivní tabulku, kde lze:
+\begin{itemize}
+  \item přiřadit učitele jako zkoušejícího k předmětu,
+  \item nastavit procentuální podíl zkoušení,
+  \item zobrazit celkový počet studentů určených ke zkoušení.
+\end{itemize}
+
+\section{Automatické předvyplnění (autoPopulateZkouseniPrirazeni)}
+
+Funkce \texttt{autoPopulateZkouseniPrirazeni()} automaticky vyplní tabulku \texttt{zkouseni\_prirazeni} na základě existujících přiřazení učitelů k předmětům. Klíčovým aspektem je kompatibilita s MySQL \texttt{ONLY\_FULL\_GROUP\_BY}:
+
+\begin{lstlisting}[style=sqlstyle, caption={GROUP BY kompatibilní dotaz pro autoPopulateZkouseniPrirazeni}]
+SELECT
+    upp.teacherid,
+    upp.predmetid,
+    MAX(upp.podil)         AS podil,
+    MAX(p.typZkousky)      AS typZkousky,
+    MAX(COALESCE(p.aSkut, 0)
+      + COALESCE(p.bSkut, 0)
+      + COALESCE(p.cSkut, 0)) AS celkem_skut
+FROM ucitelpredmetprirazeni upp
+JOIN predmet p
+  ON p.id = upp.predmetid AND p.IdVerze = upp.IdVerze
+WHERE upp.IdVerze = ?
+  AND upp.teacherid IS NOT NULL
+  AND p.typZkousky IS NOT NULL
+  AND p.typZkousky != 'Statni zaverecna zkouska'
+GROUP BY upp.teacherid, upp.predmetid
+\end{lstlisting}
+
+\section{Technická poznámka -- display:contents}
+
+Formuláře pro inline editaci v tabulce používají CSS trik \texttt{display:contents}, který způsobuje, že element \texttt{<form>} „zmizí" z pohledu layoutu a jeho obsah (buňky \texttt{<td>}) jsou vykreslovány přímo jako potomci \texttt{<tr>}:
+
+\begin{lstlisting}[language=HTML, caption={CSS trik pro formuláře uvnitř tabulky}]
+<tr>
+  <form method="post" style="display:contents;">
+    <td>...</td>
+    <td><button type="submit">Uložit</button></td>
+  </form>
+</tr>
+\end{lstlisting}
+
+% ===================================================================
+\chapter{Manuální editace -- result-counting.php}
+% ===================================================================
+
+\section{Přehled stránky}
+
+Stránka \texttt{pages/result-counting.php} umožňuje manuální editaci výsledků přiřazení učitelů k předmětům pro výpočet pedagogické zátěže. Klíčové funkce:
+
+\begin{itemize}
+  \item Zobrazení přehledné tabulky předmětů s přiřazenými učiteli.
+  \item Inline editace počtu hodin, podílu a dalších atributů.
+  \item Filtrování dle katedry a semestru.
+  \item Aktualizace dat přes POST požadavky s PRG (Post-Redirect-Get) vzorem.
+\end{itemize}
+
+\section{PRG vzor}
+
+Pro zamezení opakovaného odeslání formuláře při obnovení stránky aplikace používá vzor Post-Redirect-Get \cite{prg}: po zpracování POST požadavku dojde k přesměrování (\texttt{header("Location: ...")}) a zobrazení stránky probíhá přes GET.
+
+% ===================================================================
+\chapter{Testování}
+% ===================================================================
+
+\section{Strategie testování}
+
+Aplikace byla testována manuálně na třech úrovních:
+\begin{enumerate}
+  \item \textbf{Jednotkové testování} -- izolované testování klíčových funkcí.
+  \item \textbf{Integrační testování} -- ověření spolupráce importu, databáze a exportu.
+  \item \textbf{Systémové testování} -- end-to-end scénáře z pohledu uživatele.
+\end{enumerate}
+
+\section{Výsledky testů -- import dat}
+
+\begin{longtable}{p{4cm}p{4cm}cp{3cm}}
+\toprule
+\textbf{Testovací případ} & \textbf{Vstup} & \textbf{Výsledek} & \textbf{Poznámka} \\
+\midrule
+\endfirsthead
+\midrule
+\textbf{Testovací případ} & \textbf{Vstup} & \textbf{Výsledek} & \textbf{Poznámka} \\
+\midrule
+\endhead
+Import fakult a kateder & Platná data STAG & \textbf{OK} & 7 fakult importováno \\
+Import studijních programů & Platná data STAG & \textbf{OK} & Programy FAI \\
+Import s výpadkem API & Simulovaný timeout & \textbf{OK} & Retry 3× funguje \\
+Re-import (duplikáty) & Stejná data & \textbf{OK} & ON DUPLICATE KEY \\
+Import neplatný JSON & Poškozená odpověď & \textbf{OK} & Fallback čištění \\
+Import s null rok & DB bez AktivniRok & \textbf{OK} & Fallback dle měsíce \\
+\bottomrule
+\caption{Výsledky testů importu dat}
+\end{longtable}
+
+\section{Výsledky testů -- export XLSX}
+
+\begin{longtable}{p{4cm}p{4cm}cp{3cm}}
+\toprule
+\textbf{Testovací případ} & \textbf{Vstup} & \textbf{Výsledek} & \textbf{Poznámka} \\
+\midrule
+\endfirsthead
+\midrule
+\textbf{Testovací případ} & \textbf{Vstup} & \textbf{Výsledek} & \textbf{Poznámka} \\
+\midrule
+\endhead
+Export Přílohy 1 & 20 předmětů & \textbf{OK} & Soubor validní \\
+Export Přílohy 2 & Rozpad SP & \textbf{OK} & Správné ročníky \\
+Export úvazku & Jeden učitel & \textbf{OK} & XLSX otevřen \\
+Export prázdná data & 0 předmětů & \textbf{OK} & Prázdný soubor \\
+\bottomrule
+\caption{Výsledky testů exportu XLSX}
+\end{longtable}
+
+\section{Výsledky testů -- databázové migrace}
+
+\begin{longtable}{p{5cm}p{4cm}cp{2.5cm}}
+\toprule
+\textbf{Testovací případ} & \textbf{Vstup} & \textbf{Výsledek} & \textbf{Poznámka} \\
+\midrule
+\endfirsthead
+\midrule
+\textbf{Testovací případ} & \textbf{Vstup} & \textbf{Výsledek} & \textbf{Poznámka} \\
+\midrule
+\endhead
+runMigrations() na prázdné DB & Nová DB & \textbf{OK} & Všechny tabulky \\
+runMigrations() opakovaně & Existující tabulky & \textbf{OK} & Idempotentní \\
+deleteAll() + onInit() & Plná DB & \textbf{OK} & IF NOT EXISTS \\
+predmet\_jazyk migration & Chybějící tabulka & \textbf{OK} & Migrace 004 \\
+rozvrhova\_akce migration & Chybějící tabulka & \textbf{OK} & Migrace 005 \\
+\bottomrule
+\caption{Výsledky testů databázových migrací}
+\end{longtable}
+
+% ===================================================================
+\chapter{Uživatelský manuál}
+% ===================================================================
+
+\section{Systémové požadavky}
+
+Pro provoz aplikace je třeba:
+\begin{itemize}
+  \item Docker Desktop (verze 4.x nebo novější),
+  \item přístup k internetu (pro komunikaci se STAG API),
+  \item přihlašovací údaje do systému STAG (uživatelské jméno a heslo).
+\end{itemize}
+
+\section{Spuštění aplikace}
+
+\begin{enumerate}
+  \item Rozbalte archiv se zdrojovým kódem.
+  \item Otevřete soubor \texttt{docker-compose.yml} v textovém editoru a doplňte své přihlašovací údaje do systému STAG:
+    \begin{lstlisting}[language=yaml]
+environment:
+  STAG_USERNAME: "vase_prihlasovaci_jmeno"
+  STAG_PASSWORD: "vase_heslo"
+    \end{lstlisting}
+    Přihlašovací údaje jsou stejné jako pro přihlášení do portálu IS/STAG UTB.
+    Aplikace tyto hodnoty načte automaticky při spuštění -- není třeba upravovat žádné PHP soubory.
+  \item V kořenovém adresáři projektu spusťte:
+    \begin{lstlisting}[language=bash]
+docker compose up -d
+    \end{lstlisting}
+  \item Otevřete prohlížeč a přejděte na \texttt{http://localhost:8080}.
+\end{enumerate}
+
+\section{Inicializace databáze}
+
+Při prvním spuštění nebo po resetu dat:
+\begin{enumerate}
+  \item Na hlavní stránce (\texttt{index.php}) klikněte na tlačítko \textbf{Inicializovat databázi}.
+  \item Systém vytvoří všechny potřebné tabulky a vloží výchozí nastavení.
+\end{enumerate}
+
+\section{Nastavení systému}
+
+Před importem dat nastavte aktivní rok, semestr a katedru:
+\begin{enumerate}
+  \item Přejděte na stránku \textbf{Nastavení} (\texttt{pages/settings.php}).
+  \item Vyberte aktivní akademický rok (např. 2024).
+  \item Vyberte semestr (ZS = zimní, LS = letní).
+  \item Vyberte katedru, jejíž data chcete zobrazovat.
+\end{enumerate}
+
+\section{Import dat ze STAG}
+
+\begin{enumerate}
+  \item Přejděte na stránku \textbf{Insert do DB} (\texttt{pages/insert1.php}).
+  \item Klikněte na \textbf{Kompletní import UTB} pro import dat celé univerzity, nebo zvolte import pro konkrétní fakultu.
+  \item Průběh importu je zobrazen jako textový výstup. Počkejte na zprávu \textit{Import dokončen}.
+  \item \textbf{Upozornění:} Kompletní import může trvat 5--15 minut v závislosti na rychlosti STAG API.
+\end{enumerate}
+
+\section{Manuální editace dat}
+
+\begin{enumerate}
+  \item Přejděte na stránku \textbf{Manuální editace} (\texttt{pages/result-counting.php}).
+  \item V tabulce najděte požadovaný předmět.
+  \item Klikněte do editovatelného pole a zadejte hodnotu.
+  \item Klikněte \textbf{Uložit} pro potvrzení změny.
+\end{enumerate}
+
+\section{Export do XLSX}
+
+\begin{enumerate}
+  \item Přejděte na stránku \textbf{Export} (\texttt{pages/export.php}).
+  \item Vyberte typ exportu (Příloha 1 nebo Příloha 2).
+  \item Klikněte \textbf{Exportovat} -- prohlížeč automaticky stáhne soubor XLSX.
+\end{enumerate}
+
+\section{Přehled učitelů a export úvazku}
+
+\begin{enumerate}
+  \item Přejděte na \textbf{Přehled kantorů} (\texttt{pages/overview-ucitele.php}).
+  \item U každého učitele jsou dostupné tlačítka:
+    \begin{itemize}
+      \item \textbf{Zobrazit úvazek} -- otevře detail v novém okně.
+      \item \textbf{Detail / editace} -- umožní editovat údaje učitele.
+      \item \textbf{Export Excel} -- stáhne XLSX s úvazkem daného učitele.
+    \end{itemize}
+\end{enumerate}
+
+% ===================================================================
+\chapter{Závěr}
+% ===================================================================
+
+Systém pro správu pedagogické zátěže UTB byl úspěšně implementován jako webová aplikace splňující všechny stanovené funkční i nefunkční požadavky. Aplikace automatizuje dříve manuální procesy, čímž snižuje riziko chyb a šetří čas administrativních pracovníků kateder.
+
+Mezi hlavní přínosy patří:
+\begin{itemize}
+  \item Automatizovaný import dat z STAG API s robustní retry logikou.
+  \item Verzovaný datový model zajišťující historii a bezpečný re-import.
+  \item Idempotentní databázové migrace kompatibilní s Docker nasazením.
+  \item Export do standardizovaných XLSX šablon připravených pro vedení UTB.
+  \item Intuitivní uživatelské rozhraní přístupné přes webový prohlížeč.
+\end{itemize}
+
+Možná budoucí rozšíření zahrnují autentizaci uživatelů, podporu více kateder v jednom zobrazení, automatické plánování importů a integraci s dalšími systémy UTB.
+
+% ===================================================================
+\begin{thebibliography}{99}
+% ===================================================================
+
+\bibitem{php82}
+PHP Group.
+\textit{PHP 8.2 -- Documentation}.
+[online]. 2023 [cit. 2025-03-10].
+Dostupné z: \url{https://www.php.net/releases/8.2/}
+
+\bibitem{mysql80}
+Oracle Corporation.
+\textit{MySQL 8.0 Reference Manual}.
+[online]. 2023 [cit. 2025-03-10].
+Dostupné z: \url{https://dev.mysql.com/doc/refman/8.0/en/}
+
+\bibitem{docker}
+Docker Inc.
+\textit{Docker Compose Documentation}.
+[online]. 2024 [cit. 2025-03-15].
+Dostupné z: \url{https://docs.docker.com/compose/}
+
+\bibitem{phpspreadsheet}
+PHPOffice.
+\textit{PhpSpreadsheet Documentation}.
+[online]. 2023 [cit. 2025-03-12].
+Dostupné z: \url{https://phpspreadsheet.readthedocs.io/}
+
+\bibitem{stagapi}
+Univerzita Tomáše Bati ve Zlíně.
+\textit{STAG REST API -- Dokumentace}.
+[online]. 2024 [cit. 2025-03-20].
+Dostupné z: \url{https://stag-demo.zcu.cz/ws/services/rest2/help}
+
+\bibitem{git}
+Chacon, S.; Straub, B.
+\textit{Pro Git}.
+2. vyd. Apress, 2014. ISBN 978-1-4842-0077-3.
+Dostupné z: \url{https://git-scm.com/book/en/v2}
+
+\bibitem{rest}
+Fielding, R. T.
+\textit{Architectural Styles and the Design of Network-based Software Architectures}.
+Disertační práce. University of California, Irvine, 2000.
+Dostupné z: \url{https://www.ics.uci.edu/~fielding/pubs/dissertation/top.htm}
+
+\bibitem{pdo}
+PHP Group.
+\textit{PHP Data Objects (PDO) -- Manual}.
+[online]. 2024 [cit. 2025-04-01].
+Dostupné z: \url{https://www.php.net/manual/en/book.pdo.php}
+
+\bibitem{ecma376}
+ECMA International.
+\textit{ECMA-376: Office Open XML File Formats}.
+5th Edition. Ženeva: ECMA International, 2015.
+Dostupné z: \url{https://ecma-international.org/publications-and-standards/standards/ecma-376/}
+
+\bibitem{prg}
+Dubois, P.
+\textit{Post/Redirect/Get (PRG) Design Pattern}.
+[online]. 2002 [cit. 2025-04-05].
+Dostupné z: \url{https://en.wikipedia.org/wiki/Post/Redirect/Get}
+
+\bibitem{composer}
+Composer Authors.
+\textit{Composer -- Dependency Manager for PHP}.
+[online]. 2024 [cit. 2025-03-15].
+Dostupné z: \url{https://getcomposer.org/}
+
+\bibitem{nginx}
+NGINX, Inc.
+\textit{NGINX Documentation}.
+[online]. 2024 [cit. 2025-03-10].
+Dostupné z: \url{https://nginx.org/en/docs/}
+
+\bibitem{utf8mb4}
+Oracle Corporation.
+\textit{MySQL -- The utf8mb4 Character Set}.
+[online]. 2023 [cit. 2025-04-10].
+Dostupné z: \url{https://dev.mysql.com/doc/refman/8.0/en/charset-unicode-utf8mb4.html}
+
+\bibitem{basicauth}
+Fielding, R.; Reschke, J.
+\textit{RFC 7617 -- The 'Basic' HTTP Authentication Scheme}.
+IETF, 2015.
+Dostupné z: \url{https://tools.ietf.org/html/rfc7617}
+
+\bibitem{isoiec25010}
+ISO/IEC.
+\textit{ISO/IEC 25010:2011 -- Systems and software Quality Requirements and Evaluation (SQuaRE)}.
+Ženeva: ISO/IEC, 2011.
+
+\end{thebibliography}
+
+\end{document}
+ware Quality Requirements and Evaluation (SQuaRE)}.
+\v{Z}eneva: ISO/IEC, 2011.
+
+\end{thebibliography}
+
+\end{document}
