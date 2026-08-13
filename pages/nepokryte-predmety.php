@@ -67,12 +67,6 @@ $typNazvy = ['P' => 'Přednáška', 'C' => 'Cvičení', 'S' => 'Seminář', 'R' 
         .part-badge.none { border-color:#dc3545; background:#fdf1f2; color:#7a1a1a; }
         .part-badge.partial { border-color:#ffc107; background:#fffbf0; color:#7a5a00; }
         .coverage-table td { vertical-align:top; }
-        .missing { font-weight:bold; color:#b02a37; }
-        .coverage-cell { min-width:140px; }
-        .coverage-track { height:8px; border-radius:5px; background:#e9ecef;
-                          overflow:hidden; margin:5px 0 3px; }
-        .coverage-fill { height:100%; background:#c84f5a; }
-        .coverage-detail { font-size:.8rem; color:#666; }
     </style>
 </head>
 <body>
@@ -177,7 +171,6 @@ $typNazvy = ['P' => 'Přednáška', 'C' => 'Cvičení', 'S' => 'Seminář', 'R' 
                     <th>Semestr</th>
                     <th>Katedra</th>
                     <th>Nepokryté části</th>
-                    <th>Pokrytí předmětu</th>
                     <th>Akce</th>
                 </tr>
             </thead>
@@ -205,17 +198,6 @@ $typNazvy = ['P' => 'Přednáška', 'C' => 'Cvičení', 'S' => 'Seminář', 'R' 
                                         : 'pokryto ' . number_format($cast['soucet_podilu'], 0, ',', ' ') . ' %' ?>
                                 </span>
                             <?php endforeach; ?>
-                        </td>
-                        <td class="coverage-cell">
-                            <strong class="missing"><?= number_format($predmet['pokryti_procent'], 0, ',', ' ') ?> %</strong>
-                            <div class="coverage-track">
-                                <div class="coverage-fill" style="width:<?= min(100, max(0, (float)$predmet['pokryti_procent'])) ?>%"></div>
-                            </div>
-                            <div class="coverage-detail">
-                                nepokryto <?= (int)$predmet['pocet_casti'] ?>
-                                z <?= (int)$predmet['pocet_casti_celkem'] ?>
-                                <?= $predmet['pocet_casti_celkem'] === 1 ? 'části' : 'částí' ?>
-                            </div>
                         </td>
                         <td>
                             <a href="result-counting.php?idVerze=<?= (int)$idVerze ?>&zkratka=<?= urlencode($predmet['zkratka']) ?>"

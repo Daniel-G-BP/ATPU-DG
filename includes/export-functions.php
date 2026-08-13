@@ -510,11 +510,11 @@ function exportNepokrytePredmety(array $filters = []): string
     $headers = [
         'Zkratka', 'Název', 'Semestr', 'Rok', 'Katedra', 'Fakulta',
         'Typ výuky', 'Jazyk', 'Pokrytí části %', 'Chybí v části %', 'Důvod',
-        'Pokrytí předmětu %', 'Nepokrytých částí', 'Částí celkem',
+        'Nepokrytých částí', 'Částí celkem',
     ];
     $headerRow = 5;
     $sheet->fromArray([$headers], null, 'A' . $headerRow);
-    styleExportHeader($sheet, 'A' . $headerRow . ':N' . $headerRow);
+    styleExportHeader($sheet, 'A' . $headerRow . ':M' . $headerRow);
 
     $row = $headerRow + 1;
     foreach ($nepokryte as $predmet) {
@@ -531,13 +531,12 @@ function exportNepokrytePredmety(array $filters = []): string
                 (float)$cast['soucet_podilu'],
                 (float)$cast['chybi'],
                 $cast['duvod'],
-                (float)$predmet['pokryti_procent'],
                 (int)$predmet['pocet_casti'],
                 (int)$predmet['pocet_casti_celkem'],
             ]], null, 'A' . $row);
 
             if ($cast['soucet_podilu'] <= 0) {
-                $sheet->getStyle("A{$row}:N{$row}")->getFill()
+                $sheet->getStyle("A{$row}:M{$row}")->getFill()
                     ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
                     ->getStartColor()->setRGB('F8D7DA');
             }
@@ -549,12 +548,10 @@ function exportNepokrytePredmety(array $filters = []): string
     if ($lastRow >= $headerRow + 1) {
         $sheet->getStyle('I' . ($headerRow + 1) . ':J' . $lastRow)
             ->getNumberFormat()->setFormatCode('0.00');
-        $sheet->getStyle('L' . ($headerRow + 1) . ':L' . $lastRow)
-            ->getNumberFormat()->setFormatCode('0.0');
-        $sheet->setAutoFilter('A' . $headerRow . ':N' . $lastRow);
+        $sheet->setAutoFilter('A' . $headerRow . ':M' . $lastRow);
     }
 
-    foreach (range('A', 'N') as $col) {
+    foreach (range('A', 'M') as $col) {
         $sheet->getColumnDimension($col)->setAutoSize(true);
     }
     $sheet->freezePane('A' . ($headerRow + 1));

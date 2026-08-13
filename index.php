@@ -10,6 +10,7 @@
         <?php
         include_once 'includes/functions.php';
         include_once 'includes/dbh.inc.php';
+        include_once 'includes/main-menu.php';
 
         $pdo = connectToDatabase();
       
@@ -21,15 +22,7 @@
     <div id="navbar">
         <ul>
             <h1 style="text-align: center;">Menu</h1>
-            <li><a href="index.php">Main</a></li>
-            <li><a href="pages/view.php">View</a></li>
-            <li><a href="pages/edit.php">Edit</a></li>
-            <li><a href="pages/insert1.php">Import dat</a></li>
-            <li><a href="pages/result-counting.php">Manuální editace (A.1)</a></li>
-            <li><a href="pages/zkouseni.php">Zkoušení (A.2)</a></li>
-            <li><a href="pages/rozdat_cviceni.php">Rozdělit cvičení</a></li>
-            <li><a href="pages/overview-ucitele.php">Přehled učitelé</a></li>
-            <li><a href="pages/settings.php">Nastavení</a></li>
+            <?php renderMainMenuItems('index.php', 'pages/'); ?>
         </ul>
     </div>
 

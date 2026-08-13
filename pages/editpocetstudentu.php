@@ -8,11 +8,11 @@
     <link rel="stylesheet" href="../stylepage.css">
 </head>
 <body>
+    <?php require_once __DIR__ . '/../includes/main-menu.php'; ?>
     <div id="navbar">
         <ul>
             <h1 style="text-align:center;">Menu</h1>
-            <li><a href="../index.php">Main</a></li>
-            <li><a href="settings.php">Nastavení</a></li>
+            <?php renderMainMenuItems('../index.php'); ?>
         </ul>
     </div>
     <div id="content" class="rounded-border">
