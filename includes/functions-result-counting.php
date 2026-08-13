@@ -48,6 +48,10 @@ function buildReturnUrl(): string
         $params['semestr'] = $_POST['return_semestr'];
     }
 
+    if (isset($_POST['return_omezit_ucitele_fakulta']) && $_POST['return_omezit_ucitele_fakulta'] === '1') {
+        $params['omezit_ucitele_fakulta'] = '1';
+    }
+
     $url = '../pages/result-counting.php';
     if (!empty($params)) {
         $url .= '?' . http_build_query($params);
@@ -128,12 +132,17 @@ function updateAssignment(PDO $pdo, int $id, int $idVerze, array $data): void
 
     $typ = $data['typ'] ?? $row['typ'];
     $jazyk = normalizeValue($data['jazyk'] ?? $row['jazyk']);
+    $druhPredmetu = (string)($data['druh_predmetu'] ?? $row['druh_predmetu'] ?? 'auto');
     $ucitel = normalizeValue($data['ucitel'] ?? $row['teacherid']);
     $podil = normalizeValue($data['podil'] ?? $row['podil']);
     $maxStudentu = normalizeValue($data['max_studentu'] ?? $row['max_pocet_studentu']);
 
     if (!in_array($typ, ['P', 'C', 'S'], true)) {
         throw new Exception('Neplatný typ.');
+    }
+
+    if (!in_array($druhPredmetu, ['auto', 'standard', 'c', 'd', 'dc'], true)) {
+        throw new Exception('Neplatný druh předmětu pro výpočet úvazku.');
     }
 
     $jazyk = ($jazyk === null) ? null : (int)$jazyk;
@@ -161,15 +170,18 @@ function updateAssignment(PDO $pdo, int $id, int $idVerze, array $data): void
         UPDATE ucitelpredmetprirazeni
         SET typ = :typ,
             jazyk = :jazyk,
+            druh_predmetu = :druh_predmetu,
             teacherid = :teacherid,
             podil = :podil,
-            max_pocet_studentu = :max_pocet_studentu
+            max_pocet_studentu = :max_pocet_studentu,
+            upraveno_rucne = 1
         WHERE id = :id
           AND IdVerze = :idVerze
     ");
     $stmt->execute([
         ':typ' => $typ,
         ':jazyk' => $jazyk,
+        ':druh_predmetu' => $druhPredmetu,
         ':teacherid' => $ucitel,
         ':podil' => $podil,
         ':max_pocet_studentu' => $maxStudentu,
@@ -180,7 +192,8 @@ function updateAssignment(PDO $pdo, int $id, int $idVerze, array $data): void
     if ($typ === 'C' && $maxStudentu !== null) {
         $stmt = $pdo->prepare("
             UPDATE ucitelpredmetprirazeni
-            SET max_pocet_studentu = :max_pocet_studentu
+            SET max_pocet_studentu = :max_pocet_studentu,
+                upraveno_rucne = 1
             WHERE predmetid = :predmetid
               AND IdVerze = :idVerze
               AND typ = 'C'
@@ -253,7 +266,8 @@ try {
         case 'odebrat':
             $stmt = $pdo->prepare("
                 UPDATE ucitelpredmetprirazeni
-                SET teacherid = NULL
+                SET teacherid = NULL,
+                    upraveno_rucne = 1
                 WHERE id = ? AND IdVerze = ?
             ");
             $stmt->execute([$id, $idVerze]);
@@ -269,6 +283,7 @@ try {
 
         case 'kopirovat':
             unset($row['id']);
+            $row['upraveno_rucne'] = 1;
 
             $columns = implode(', ', array_keys($row));
             $placeholders = implode(', ', array_fill(0, count($row), '?'));

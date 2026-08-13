@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/dbh.inc.php';
 require_once '../includes/functions.php';
+require_once '../includes/workload-functions.php';
 
 $pdo = connectToDatabase();
 $verze = getAktivniVerze($pdo);
@@ -121,8 +122,15 @@ $stmt = $pdo->prepare("
 $stmt->execute($params);
 $zaznamy = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Koeficienty pro PB náhled
-$koef = ['kl' => 0.3, 'zap' => 0.2, 'zk' => 0.4, 'dz' => 0.7];
+// Stejné koeficienty používá náhled, souhrn učitele i Excel export.
+$storedCoefficients = getWorkloadCoefficients($pdo, $verze);
+$a2Coefficients = $storedCoefficients['A2']['standard'] ?? [];
+$koef = [
+    'kl' => (float)($a2Coefficients['KL'] ?? 0),
+    'zap' => (float)($a2Coefficients['ZAP'] ?? 0),
+    'zk' => (float)($a2Coefficients['ZK'] ?? 0),
+    'dz' => (float)($a2Coefficients['DZ'] ?? 0),
+];
 
 function buildZkouseniPageLink(int $targetPage): string {
     $p = $_GET;
@@ -342,7 +350,7 @@ function buildZkouseniPageLink(int $targetPage): string {
     <?php endif; ?>
 
     <script>
-    const koef = {kl: 0.3, zap: 0.2, zk: 0.4, dz: 0.7};
+    const koef = <?= json_encode($koef, JSON_UNESCAPED_UNICODE | JSON_NUMERIC_CHECK) ?>;
     document.querySelectorAll('input.num-input').forEach(input => {
         input.addEventListener('input', () => {
             const rowId = input.dataset.rowid;

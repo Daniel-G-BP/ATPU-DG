@@ -1,3 +1,7 @@
+<?php
+require_once __DIR__ . '/../includes/functions.php';
+startAppSession();
+?>
 <!DOCTYPE html>
 <html lang="cs">
 <head>
@@ -85,13 +89,6 @@
             flex-wrap: wrap;
             margin-bottom: 8px;
         }
-        details summary {
-            cursor: pointer;
-            color: #7a4800;
-            font-weight: bold;
-            font-size: 0.9rem;
-            padding: 4px 0;
-        }
         .msg-ok  { color: green; font-weight: bold; }
         .msg-err { color: red;   font-weight: bold; }
         .aj-section {
@@ -116,6 +113,40 @@
                         border-radius:10px; padding:2px 10px; font-size:.8rem; font-weight:bold; }
         .aj-badge-off { display:inline-block; background:#dc3545; color:#fff;
                         border-radius:10px; padding:2px 10px; font-size:.8rem; font-weight:bold; }
+        .credentials-section {
+            background: #eef8f0;
+            border-left: 4px solid #198754;
+            border-radius: 4px;
+            padding: 16px 20px;
+            margin: 18px 0 20px 0;
+        }
+        .credentials-section.missing {
+            background: #fff5f5;
+            border-left-color: #c0392b;
+        }
+        .credentials-section h3 {
+            margin: 0 0 6px 0;
+            font-size: 1rem;
+            color: #1b5e20;
+        }
+        .credentials-section.missing h3 {
+            color: #7a1a1a;
+        }
+        .credentials-section p {
+            margin: 0 0 10px 0;
+            color: #444;
+            font-size: 0.88rem;
+        }
+        .credentials-section form {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .credentials-section input[type=text],
+        .credentials-section input[type=password] {
+            min-width: 210px;
+        }
     </style>
 </head>
 
@@ -128,6 +159,25 @@
         include_once '../includes/dbh.inc.php';
 
         $pdo = connectToDatabase();
+
+        if (isset($_POST['save_stag_credentials'])) {
+            $stagUsername = trim($_POST['stag_username'] ?? '');
+            $stagPassword = (string)($_POST['stag_password'] ?? '');
+
+            if ($stagUsername === '' || $stagPassword === '') {
+                echo "<p class='msg-err'>Vyplnte prihlasovaci jmeno i heslo do IS/STAG.</p>";
+            } else {
+                saveStagCredentialsToSession($stagUsername, $stagPassword);
+                echo "<p class='msg-ok'>Prihlasovaci udaje do IS/STAG byly ulozeny pouze do serverove session.</p>";
+            }
+        }
+
+        if (isset($_POST['clear_stag_credentials'])) {
+            clearStagCredentialsFromSession();
+            echo "<p class='msg-ok'>Prihlasovaci udaje do IS/STAG byly ze session odstraneny.</p>";
+        }
+
+        $stagCredentials = getStagCredentialsFromSession();
 
         // ── Zpracování akcí ──────────────────────────────────────────────────
 
@@ -168,26 +218,62 @@
         }
 
         if (isset($_POST['load_fakulta']) && !empty($_POST['fakulta'])) {
-            $fakulta = $_POST['fakulta'];
-            getKatedry($pdo, $fakulta);
-            getStudijniProgram($pdo, $fakulta);
-            echo "<p class='msg-ok'>✔ Základní data fakulty <strong>" . h($fakulta) . "</strong> načtena (katedry a studijní programy).</p>";
+            if (!hasStagCredentials()) {
+                echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
+            } else {
+                try {
+                    assertStagCredentialsValid();
+                    $fakulta = $_POST['fakulta'];
+                    getKatedry($pdo, $fakulta);
+                    getStudijniProgram($pdo, $fakulta);
+                    echo "<p class='msg-ok'>✔ Základní data fakulty <strong>" . h($fakulta) . "</strong> načtena (katedry a studijní programy).</p>";
+                } catch (Throwable $e) {
+                    echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                }
+            }
         }
 
         if (isset($_POST['import_katedra']) && !empty($_POST['katedra'])) {
-            $katedra = $_POST['katedra'];
-            importJednuKatedruSeVsim($pdo, $katedra);
-            echo "<p class='msg-ok'>✔ Data katedry <strong>" . h($katedra) . "</strong> byla úspěšně naimportována a přiřazení učitelů provedeno.</p>";
+            if (!hasStagCredentials()) {
+                echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
+            } else {
+                try {
+                    assertStagCredentialsValid();
+                    $katedra = $_POST['katedra'];
+                    importJednuKatedruSeVsim($pdo, $katedra);
+                    echo "<p class='msg-ok'>✔ Data katedry <strong>" . h($katedra) . "</strong> byla úspěšně naimportována a přiřazení učitelů provedeno.</p>";
+                } catch (Throwable $e) {
+                    echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                }
+            }
         }
 
         if (isset($_POST['import_all_katedry'])) {
-            insertAllKatedry($pdo);
-            echo "<p class='msg-ok'>✔ Data všech uložených kateder byla naimportována.</p>";
+            if (!hasStagCredentials()) {
+                echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
+            } else {
+                try {
+                    assertStagCredentialsValid();
+                    insertAllKatedry($pdo);
+                    echo "<p class='msg-ok'>✔ Data všech uložených kateder byla naimportována.</p>";
+                } catch (Throwable $e) {
+                    echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                }
+            }
         }
 
         if (isset($_POST['import_all_fakulty'])) {
-            importAllFakultyAKatedry($pdo);
-            echo "<p class='msg-ok'>✔ Kompletní import všech fakult dokončen.</p>";
+            if (!hasStagCredentials()) {
+                echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
+            } else {
+                try {
+                    assertStagCredentialsValid();
+                    importAllFakultyAKatedry($pdo);
+                    echo "<p class='msg-ok'>✔ Kompletní import všech fakult dokončen.</p>";
+                } catch (Throwable $e) {
+                    echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                }
+            }
         }
 
         if (isset($_POST['set_zahrnout_aj'])) {
@@ -238,7 +324,31 @@
         ?>
 
         <h1>Import dat ze STAGu</h1>
-        <p style="color:#555; margin-top:0;">Postupujte podle kroků 1–4. Každý krok je nutné dokončit před tím, než přejdete na následující.</p>
+        <p style="color:#555; margin-top:0;">Nastavte verzi a akademický rok, potom použijte hromadný import.</p>
+
+        <div class="credentials-section <?= $stagCredentials ? '' : 'missing' ?>">
+            <h3>Prihlasovaci udaje do IS/STAG</h3>
+            <?php if ($stagCredentials): ?>
+                <p>
+                    Udaje jsou ulozeny pouze v serverove session pro aktualni praci s importem.
+                    Aktivni uzivatel: <strong><?= h($stagCredentials['username']) ?></strong>.
+                    Heslo se neuklada do databaze, do docker-compose.yml ani do repozitare.
+                </p>
+                <form method="post">
+                    <input type="submit" name="clear_stag_credentials" value="Odstranit udaje ze session">
+                </form>
+            <?php else: ?>
+                <p>
+                    Pred importem zadejte vlastni udaje do IS/STAG. Server je pouzije pro volani STAG webovych sluzeb
+                    a uchova je jen v session do ukonceni prace nebo rucniho odstraneni.
+                </p>
+                <form method="post" autocomplete="off">
+                    <input type="text" name="stag_username" placeholder="STAG prihlasovaci jmeno" autocomplete="username" required>
+                    <input type="password" name="stag_password" placeholder="STAG heslo" autocomplete="current-password" required>
+                    <input type="submit" name="save_stag_credentials" value="Ulozit do session">
+                </form>
+            <?php endif; ?>
+        </div>
 
         <?php if ($currentVersionName): ?>
             <div class="version-badge">
@@ -301,6 +411,7 @@
             </form>
         </div>
 
+        <?php /*
         <!-- ═══════════════════════════════════════════════════════════════════
              KROK 3 – Načíst katedry a studijní programy fakulty
         ════════════════════════════════════════════════════════════════════ -->
@@ -356,6 +467,46 @@
                     onclick="return confirm('Importovat data katedry? Stávající přiřazení budou přepočítána.');">
             </form>
         </div>
+        */ ?>
+
+        <!-- ═══════════════════════════════════════════════════════════════════
+             Hromadný import
+        ════════════════════════════════════════════════════════════════════ -->
+        <div class="section-title"><span class="step-number">3</span> Hromadný import</div>
+
+        <?php /*
+            <div class="advanced-section" style="margin-top:10px;">
+                <h3>Importovat data všech načtených kateder najednou</h3>
+                <p class="hint">Provede import dat pro každou katedru uloženou v databázi. Může trvat několik minut.</p>
+                <form method="post">
+                    <input type="submit" name="import_all_katedry" value="Importovat všechny katedry"
+                        onclick="return confirm('Spustit import dat pro všechny uložené katedry? Akce může trvat několik minut.');">
+                </form>
+            </div>
+        */ ?>
+
+            <div class="advanced-section" style="margin-top:10px;">
+                <h3>Kompletní import celé univerzity (všechny fakulty)</h3>
+                <p class="hint">⚠ Stáhne data pro všechny fakulty UTB (FAI, FAM, FLK, FMK, FHS, FT, IMS) a všechny jejich katedry. Trvá velmi dlouho. Doporučeno pouze pro první inicializaci nebo úplné obnovení dat.</p>
+                <form method="post">
+                    <input type="submit" name="import_all_fakulty" value="Spustit kompletní import (celá UTB)"
+                        onclick="return confirm('Spustit kompletní import celé UTB? Akce trvá velmi dlouho a přepíše stávající data.');">
+                </form>
+            </div>
+
+            <div class="advanced-section" style="margin-top:10px; border-left-color: #2e7d32;">
+                <h3 style="color:#1b5e20;">Předvyplnit zkoušení (A.2) z aktuálních dat</h3>
+                <p class="hint" style="color:#1b5e20;">
+                    Znovu spustí <code>autoPopulateZkouseniPrirazeni()</code> nad aktuální verzí.
+                    Použij pokud sekce A.2 v exportu svítí prázdná, ale data v DB jsou OK.
+                    Stávající manuálně upravené záznamy v zkouseni_prirazeni <strong>zůstanou zachovány</strong>
+                    (ON DUPLICATE KEY UPDATE ignoruje existující řádky).
+                </p>
+                <form method="post">
+                    <input type="submit" name="repopulate_zkouseni" value="Předvyplnit zkouseni_prirazeni"
+                        onclick="return confirm('Spustit předvyplnění tabulky zkouseni_prirazeni?');">
+                </form>
+            </div>
 
         <!-- ═══════════════════════════════════════════════════════════════════
              SPRÁVA ANGLICKÝCH VÝUK
@@ -398,45 +549,6 @@
                     onclick="return confirm('Opravdu odebrat všechny učitele ze všech anglických výuk? Tato akce je nevratná.');">
             </form>
         </div>
-
-        <!-- ═══════════════════════════════════════════════════════════════════
-             POKROČILÉ – Hromadný import
-        ════════════════════════════════════════════════════════════════════ -->
-        <details>
-            <summary>▸ Pokročilé – hromadný import</summary>
-
-            <div class="advanced-section" style="margin-top:10px;">
-                <h3>Importovat data všech načtených kateder najednou</h3>
-                <p class="hint">Provede krok 4 pro každou katedru, která je v databázi (tj. všechny katedry načtené v kroku 3). Může trvat několik minut.</p>
-                <form method="post">
-                    <input type="submit" name="import_all_katedry" value="Importovat všechny katedry"
-                        onclick="return confirm('Spustit import dat pro všechny uložené katedry? Akce může trvat několik minut.');">
-                </form>
-            </div>
-
-            <div class="advanced-section" style="margin-top:10px;">
-                <h3>Kompletní import celé univerzity (všechny fakulty)</h3>
-                <p class="hint">⚠ Stáhne data pro všechny fakulty UTB (FAI, FAM, FLK, FMK, FHS, FT, IMS) a všechny jejich katedry. Trvá velmi dlouho. Doporučeno pouze pro první inicializaci nebo úplné obnovení dat.</p>
-                <form method="post">
-                    <input type="submit" name="import_all_fakulty" value="Spustit kompletní import (celá UTB)"
-                        onclick="return confirm('Spustit kompletní import celé UTB? Akce trvá velmi dlouho a přepíše stávající data.');">
-                </form>
-            </div>
-
-            <div class="advanced-section" style="margin-top:10px; border-left-color: #2e7d32;">
-                <h3 style="color:#1b5e20;">Předvyplnit zkoušení (A.2) z aktuálních dat</h3>
-                <p class="hint" style="color:#1b5e20;">
-                    Znovu spustí <code>autoPopulateZkouseniPrirazeni()</code> nad aktuální verzí.
-                    Použij pokud sekce A.2 v exportu svítí prázdná, ale data v DB jsou OK.
-                    Stávající manuálně upravené záznamy v zkouseni_prirazeni <strong>zůstanou zachovány</strong>
-                    (ON DUPLICATE KEY UPDATE ignoruje existující řádky).
-                </p>
-                <form method="post">
-                    <input type="submit" name="repopulate_zkouseni" value="Předvyplnit zkouseni_prirazeni"
-                        onclick="return confirm('Spustit předvyplnění tabulky zkouseni_prirazeni?');">
-                </form>
-            </div>
-        </details>
 
     </div>
 </body>

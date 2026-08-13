@@ -1,5 +1,6 @@
 <?php
-require_once 'dbh.inc.php';
+require_once __DIR__ . '/dbh.inc.php';
+require_once __DIR__ . '/workload-functions.php';
 $pdo = connectToDatabase();
 
 function getTituly() {
@@ -20,4 +21,32 @@ function deleteTitul($id) {
     $stmt->execute([':id' => $id]);
 }
 
-?>
+function getUvazekKoeficienty(): array {
+    global $pdo;
+    return getWorkloadCoefficients($pdo, getAktivniVerze($pdo));
+}
+
+function saveUvazekKoeficienty(array $values): void {
+    global $pdo;
+    saveWorkloadCoefficients($pdo, getAktivniVerze($pdo), $values);
+}
+
+function getPretizeniProcent(): float {
+    global $pdo;
+    return getWorkloadOverloadThreshold($pdo, getAktivniVerze($pdo));
+}
+
+function savePretizeniProcent($value): void {
+    global $pdo;
+    saveWorkloadOverloadThreshold($pdo, getAktivniVerze($pdo), $value);
+}
+
+function getPlnyUvazekPB(): float {
+    global $pdo;
+    return getWorkloadFullTimePoints($pdo, getAktivniVerze($pdo));
+}
+
+function savePlnyUvazekPB($value): void {
+    global $pdo;
+    saveWorkloadFullTimePoints($pdo, getAktivniVerze($pdo), $value);
+}

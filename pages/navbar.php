@@ -10,6 +10,7 @@
             <li><a href="zkouseni.php">Zkoušení (A.2)</a></li>
             <li><a href="rozdat_cviceni.php">Rozdělit cvičení</a></li>
             <li><a href="overview-ucitele.php">Přehled učitelé</a></li>
+            <li><a href="nepokryte-predmety.php">Nepokrytá výuka</a></li>
             <li><a href="settings.php">Nastavení</a></li>
         </ul>
     </div>

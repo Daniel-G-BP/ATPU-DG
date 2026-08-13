@@ -1,46 +1,121 @@
-Tato webová aplikace slouží ke správě studijních předmětů, učitelů a jejich úvazků. Umožňuje import dat, přiřazování učitelů k předmětům, výpočty hodinových úvazků a jejich úpravy.
+Automatizace tvorby pracovnich uvazku
+=====================================
 
-Spuštění aplikace:
-1. Nainstalujte Docker Desktop - https://www.docker.com/products/docker-desktop
+Webova aplikace slouzi ke sprave studijnich predmetu, ucitelu a jejich uvazku.
+Umoznuje import dat z IS/STAG, automaticke predvyplneni prirazeni ucitelu,
+rucni upravy uvazku, evidenci nepokryte vyuky a export do XLSX.
 
-2. Naklonujte projekt: 
-git clone https://github.com/Daniel-G-BP/ATPU-DG
-cd ATPU-DG
+Spusteni aplikace
+-----------------
 
-3. Nastavení přihlašovacích údajů do STAGu:
-Otevři soubor docker-compose.yml a vyplň své přihlašovací údaje (stejné jako pro IS/STAG UTB):
+1. Nainstalujte Docker Desktop:
+   https://www.docker.com/products/docker-desktop
 
-    environment:
-      STAG_USERNAME: "tvoje_prihlasovaci_jmeno"
-      STAG_PASSWORD: "tvoje_heslo"
+2. Naklonujte projekt:
 
+   ```bash
+   git clone https://github.com/Daniel-G-BP/ATPU-DG
+   cd ATPU-DG
+   ```
 
-4. Spusťte aplikaci: 
-docker-compose up --build
+3. Spustte aplikaci:
 
-5. Přejděte v prohlížeči na:
-http://localhost:8080
+   ```bash
+   docker compose up -d --build
+   ```
 
+4. Otevrete aplikaci v prohlizeci:
 
+   ```text
+   http://localhost:8080
+   ```
 
-Práce s aplikací:
-1. Inicializace databáze
-Na hlavní stránce klikni na tlačítko „Start“.
-To vytvoří základní strukturu databáze a naplní ji daty.
-Poznámka: Tlačítko je nutné zmáčknout při prvním spuštění aplikace, jinak nebudou fungovat další části.
+5. Pri prvnim spusteni kliknete na hlavni strance na tlacitko `Start`.
+   Tim se vytvori zakladni struktura databaze a naplni se ciselniky.
+
+Prihlasovaci udaje do IS/STAG
+-----------------------------
+
+Prihlasovaci udaje do IS/STAG se neukladaji do `docker-compose.yml`,
+do databaze ani do repozitare.
+
+Uzivatel je zadava az na strance `Import dat`. Aplikace je ulozi pouze do
+serverove session a pouzije je pri serverovych requestech na STAG webove sluzby.
+Po ukonceni session nebo po kliknuti na `Odstranit udaje ze session` se udaje
+zahodi.
+
+Prace s aplikaci
+----------------
+
+1. Inicializace databaze
+
+   Na hlavni strance kliknete na tlacitko `Start`.
 
 2. Import dat
-V části Insert do DB lze (Import STAG) 
--Vytvořit novou verzi: vytvořit a uložit novou verzi dat 
--Vyberte aktivní verzi: změnit verzi dat se kterou se pracuje
--Vyberte akademický rok: vybrat akademický rok
--Vyberte semestr: vybrat semestr
--Načíst katedry fakulty: vybrat fakultu
--Načíst předměty katedry: nahrát data pro zvolenou katedru fakulty se zvolenými parametry (semestr, akademický rok, fakulta, katedra)
 
-3. Manuální editace
-V části Manuální editace se zobrazuje tabulka s přiřazenými učiteli k předmětům a jejich atributy. S každým záznamem můžeme provádět tyto akce: 
-Uložit - tlačítko uloží změny provedené v řádku
-Odebrat - tlačítko odebere učitele z řádku
-Smazat řádek - tlačítko smaže celý řádek (záznam v tabulce)
-Kopírovat řádek - tlačítko zkopíruje řádek daného předmětu - bez učitele
+   V casti `Import dat`:
+
+   - zadejte prihlasovaci udaje do IS/STAG,
+   - vytvorte nebo vyberte aktivni verzi dat,
+   - nastavte akademicky rok,
+   - nactete strukturu fakulty,
+   - importujte data vybrane katedry.
+
+3. Manualni editace
+
+   V casti `Manualni editace` lze upravovat prirazeni ucitelu k predmetum,
+   menit podily, odebirat ucitele, kopirovat radky a resit nepokrytou vyuku.
+
+4. Export
+
+   V casti exportu lze vygenerovat XLSX soubor s pracovnim uvazkem vybraneho
+   vyucujiciho.
+
+Vytizenost vyucujicich
+----------------------
+
+- Koeficienty A.1 a A.2 se spravuji na strance `Nastaveni` a ukladaji se pro
+  aktivni verzi dat.
+- Hranice pretizenosti je konfigurovatelna na strance `Nastaveni`
+  (parametr `PretizeniProcent`, vychozi hodnota 110 % uvazku, rozsah 50-300 %).
+- Velikost uvazku, pozici, datum nastupu a souhrnne body A.3 az D lze upravit
+  v detailu vyucujiciho.
+- Aktualni PB a procento kapacity jsou videt v prehledu vyucujicich i pri
+  manualnim prirazovani.
+- Web a XLSX export pouzivaji stejny kalkulator; podil vyucujiciho i jednotky
+  `HOD/TYD` a `HOD/SEM` se zapocitavaji shodne.
+
+Prehled vytizenosti
+-------------------
+
+Stranka `Prehled ucitele` zobrazuje vytizenost vsech vyucujicich s moznosti
+filtrovat podle fakulty, katedry a jmena. Pretizeni vyucujici jsou zvyrazneni.
+Cely prehled lze exportovat do XLSX tlacitkem `Export prehledu do Excelu`;
+export respektuje nastavene filtry a obsahuje rozpad na oblasti A.1 az D.
+
+Nepokryta vyuka
+---------------
+
+Stranka `Nepokryta vyuka` zobrazuje predmety, u kterych jakakoliv cast vyuky
+neni plne pokryta. Casti se posuzuji zvlast pro kazdou kombinaci typu vyuky
+a jazyka; cast je nepokryta, pokud nema prirazeneho vyucujiciho nebo soucet
+podilu nedosahuje 100 %. Prehled lze filtrovat podle fakulty, katedry,
+semestru, zkratky a nazvu a exportovat do XLSX.
+
+Testovani
+---------
+
+Testy se spousteji rucne ze slozky `tests`:
+
+```bash
+# Bez pripojeni k databazi (ciste vypocetni funkce)
+php tests/workload-functions-test.php
+php tests/coverage-functions-test.php
+
+# Kontrola vypoctu v sablone XLSX
+php tests/export-template-smoke.php
+
+# Shoda webu a Excel exportu - vyzaduje bezici DB, spustit v kontejneru
+docker compose exec web php tests/workload-export-consistency-test.php
+docker compose exec web php tests/workload-export-consistency-test.php 42
+```

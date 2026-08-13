@@ -6,6 +6,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 require_once __DIR__ . '/dbh.inc.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/workload-functions.php';
 
 function duplicateRowStyle(Worksheet $sheet, int $sourceRow, int $targetRow, string $fromCol = 'A', string $toCol = 'P'): void
 {
@@ -58,10 +59,16 @@ function exportUvazekDoExcelu(int $teacherId): string
         throw new Exception("Učitel s ID $teacherId nebyl nalezen.");
     }
 
+    $profile = getTeacherWorkloadProfile($pdo, $teacherId, $idVerze);
+    $workload = calculateTeacherWorkload($pdo, $teacherId, $idVerze);
+    $coefficients = getWorkloadCoefficients($pdo, $idVerze);
+    $fullTimePoints = getWorkloadFullTimePoints($pdo, $idVerze);
+
     $name = $teacher['name'] ?? '';
     $surname = $teacher['surname'] ?? '';
     $fileBase = preg_replace('/[^A-Za-z0-9_-]/u', '_', $surname . $name);
-    $outputPath = __DIR__ . "/../excel/{$fileBase}-uvazek.xlsx";
+    $outputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+        . "{$fileBase}-uvazek-" . date('Ymd-His') . '-' . bin2hex(random_bytes(4)) . '.xlsx';
 
     $stmt = $pdo->prepare("
         SELECT r.akademickyrok
@@ -93,79 +100,39 @@ function exportUvazekDoExcelu(int $teacherId): string
     $sheet2->setCellValue("B20", $teacher['surname']); // příjmení
     $sheet2->setCellValue("B23", $rok);
 
-    // Respektuje globální nastavení ZahrnoutAJ
-    $zahrnoutAJ = getZahrnoutAJ($pdo);
-    $ajCondition = $zahrnoutAJ ? '' : 'AND upp.jazyk != 2';
+    // Koeficienty se při každém exportu zapisují z DB do kopie šablony.
+    $a1 = $coefficients['A1'] ?? [];
+    $a2 = $coefficients['A2']['standard'] ?? [];
+    $sheet2->fromArray([
+        [(float)($a1['standard']['P'] ?? 0), (float)($a1['standard']['C'] ?? 0), (float)($a1['standard']['S'] ?? 0), (float)($a1['standard']['R'] ?? 0)],
+        [(float)($a1['c']['P'] ?? 0), (float)($a1['c']['C'] ?? 0), (float)($a1['c']['S'] ?? 0), null],
+        [(float)($a1['d']['P'] ?? 0), null, null, null],
+        [(float)($a1['dc']['P'] ?? 0), null, null, null],
+    ], null, 'C6');
+    $sheet2->fromArray([
+        [(float)($a1['standard']['P'] ?? 0), (float)($a1['standard']['C'] ?? 0), (float)($a1['standard']['S'] ?? 0), (float)($a1['standard']['R'] ?? 0)],
+        [(float)($a1['c']['P'] ?? 0), (float)($a1['c']['C'] ?? 0), (float)($a1['c']['S'] ?? 0), null],
+        [(float)($a1['d']['P'] ?? 0), null, null, null],
+        [(float)($a1['dc']['P'] ?? 0), null, null, null],
+    ], null, 'M6');
+    $sheet2->fromArray([[
+        (float)($a2['KL'] ?? 0),
+        (float)($a2['ZAP'] ?? 0),
+        (float)($a2['ZK'] ?? 0),
+        (float)($a2['DZ'] ?? 0),
+    ]], null, 'C12');
 
-    // BUG FIX: dotaz rozšířen o max_pocet_studentu pro výpočet počtu skupin
-    $sql = "
-        SELECT
-            p.zkratka,
-            p.nazev,
-            p.semestr,
-            upp.typ,
-            upp.podil,
-            upp.jazyk,
-            upp.max_pocet_studentu,
-            ph.pocetJednotekPrednaska,
-            ph.pocetJednotekCviceni,
-            ph.pocetJednotekSeminar
-        FROM ucitelpredmetprirazeni upp
-        JOIN predmet p
-            ON upp.predmetid = p.id
-           AND p.IdVerze = upp.IdVerze
-        LEFT JOIN predmet_hodiny ph
-            ON p.id = ph.predmetid
-        WHERE upp.teacherid = ?
-          AND upp.IdVerze = ?
-          $ajCondition
-        ORDER BY p.zkratka, p.semestr, upp.jazyk, upp.typ
-    ";
+    $sheet1->setCellValue('B4', $profile['pozice'] ?? null);
+    $sheet1->setCellValue('L4', $profile['nastup'] ?? null);
+    $sheet1->setCellValue('F5', (float)$profile['uvazek']);
+    $sheet1->setCellValue('B5', '=F5*' . $fullTimePoints);
+    $sheet1->setCellValue('L5', !empty($profile['vyjimka']) ? 'ano' : 'ne');
+    $sheet1->setCellValue('B2', "=CONCATENATE('Pomocný'!B22,\" \")");
+    $sheet1->setCellValue('L2', "='Pomocný'!B21");
+    $sheet1->setCellValue('B3', "=CONCATENATE('Pomocný'!B19,\" \",'Pomocný'!B20)");
+    $sheet1->setCellValue('S3', "='Pomocný'!B23");
 
-    $stmtData = $pdo->prepare($sql);
-    $stmtData->execute([$teacherId, $idVerze]);
-    $rows = $stmtData->fetchAll(PDO::FETCH_ASSOC);
-
-    $grouped = [];
-
-    foreach ($rows as $r) {
-        $k = $r['zkratka'] . '_' . ($r['semestr'] ?? '') . '_' . ($r['jazyk'] ?? '');
-
-        if (!isset($grouped[$k])) {
-            $grouped[$k] = [
-                'zkratka'   => $r['zkratka'],
-                'nazev'     => $r['nazev'],
-                'semestr'   => $r['semestr'] ?? null,
-                'jazyk'     => $r['jazyk'] ?? null,
-                'prednaska' => 0,
-                'cviceni'   => 0,
-                'seminar'   => 0,
-                'skupinyP'  => 0, // počet řádků s typ='P' = počet skupin přednášek
-                'skupinyC'  => 0, // počet řádků s typ='C' = počet skupin cvičení
-                'skupinyS'  => 0, // počet řádků s typ='S' = počet skupin semináře
-            ];
-        }
-
-        $typ = $r['typ'] ?? '';
-
-        // Hodiny za týden = hodnota z předmět_hodiny (nezávislá na počtu skupin)
-        // Skupiny = každý řádek v DB = jedna skupina daného učitele
-        if ($typ === 'P') {
-            $grouped[$k]['skupinyP']++;
-            $grouped[$k]['prednaska'] = (float)($r['pocetJednotekPrednaska'] ?? 0);
-        } elseif ($typ === 'C') {
-            $grouped[$k]['skupinyC']++;
-            $grouped[$k]['cviceni'] = (float)($r['pocetJednotekCviceni'] ?? 0);
-        } elseif ($typ === 'S') {
-            $grouped[$k]['skupinyS']++;
-            $grouped[$k]['seminar'] = (float)($r['pocetJednotekSeminar'] ?? 0);
-        }
-    }
-
-    // Seřazení pro stabilní výstup
-    uasort($grouped, function ($a, $b) {
-        return [$a['zkratka'], $a['semestr'], $a['jazyk']] <=> [$b['zkratka'], $b['semestr'], $b['jazyk']];
-    });
+    $grouped = getTeacherA1ExportRows($pdo, $teacherId, $idVerze);
 
     // Oblast dat v šabloně
     $startRow = 11;
@@ -203,19 +170,16 @@ function exportUvazekDoExcelu(int $teacherId): string
         $semestrPredmetu = $item['semestr'] ?? 'ZS';
 
         // BUG FIX: počet týdnů z DB místo hardcoded 14
+        $pocetTydnu = (float)($item['tydny'] ?? ($semestrPredmetu === 'LS' ? $tydnyLS : $tydnyZS));
         $zs = '';
         $ls = '';
         if ($semestrPredmetu === 'ZS') {
-            $zs = $tydnyZS;
+            $zs = $pocetTydnu;
         } elseif ($semestrPredmetu === 'LS') {
-            $ls = $tydnyLS;
+            $ls = $pocetTydnu;
         }
 
-        // Druh: anglická/cizojazyčná výuka
-        $druh = '';
-        if ((int)$item['jazyk'] === 2) {
-            $druh = 'c';
-        }
+        $druh = (string)($item['druh'] ?? '');
 
         // Skupiny = počet řádků v DB pro daného učitele a typ výuky
         $skupinyP = $item['skupinyP'];
@@ -242,35 +206,35 @@ function exportUvazekDoExcelu(int $teacherId): string
         // Pracovní body – pro ZS bereme C, pro LS D
         $tydnyCell = ($semestrPredmetu === 'LS') ? "D{$currentRow}" : "C{$currentRow}";
 
-        $sheet1->setCellValue("M{$currentRow}", "=E{$currentRow}*{$tydnyCell}*I{$currentRow}");
-        $sheet1->setCellValue("N{$currentRow}", "=F{$currentRow}*{$tydnyCell}*J{$currentRow}");
-        $sheet1->setCellValue("O{$currentRow}", "=G{$currentRow}*{$tydnyCell}*K{$currentRow}");
-        $sheet1->setCellValue("P{$currentRow}", "=H{$currentRow}*{$tydnyCell}*L{$currentRow}");
+        $sheet1->setCellValue("M{$currentRow}",
+            "=IF(B{$currentRow}=\"c\",E{$currentRow}*{$tydnyCell}*I{$currentRow}*'Pomocný'!\$C\$7,"
+            . "IF(B{$currentRow}=\"d\",E{$currentRow}*{$tydnyCell}*I{$currentRow}*'Pomocný'!\$C\$8,"
+            . "IF(B{$currentRow}=\"dc\",E{$currentRow}*{$tydnyCell}*I{$currentRow}*'Pomocný'!\$C\$9,"
+            . "E{$currentRow}*{$tydnyCell}*I{$currentRow}*'Pomocný'!\$C\$6)))"
+        );
+        $sheet1->setCellValue("N{$currentRow}",
+            "=IF(B{$currentRow}=\"c\",F{$currentRow}*{$tydnyCell}*J{$currentRow}*'Pomocný'!\$D\$7,"
+            . "F{$currentRow}*{$tydnyCell}*J{$currentRow}*'Pomocný'!\$D\$6)"
+        );
+        $sheet1->setCellValue("O{$currentRow}",
+            "=IF(B{$currentRow}=\"c\",G{$currentRow}*{$tydnyCell}*K{$currentRow}*'Pomocný'!\$E\$7,"
+            . "G{$currentRow}*{$tydnyCell}*K{$currentRow}*'Pomocný'!\$E\$6)"
+        );
+        $sheet1->setCellValue("P{$currentRow}",
+            "=H{$currentRow}*{$tydnyCell}*L{$currentRow}*'Pomocný'!\$F\$6"
+        );
 
         $currentRow++;
     }
+    $sheet1->setCellValue('S7', "=SUM(M{$startRow}:P{$endWriteRow})");
+    $sheet1->setCellValue('T7', '=S7/$B$5');
 
     // =========================================================
     // ČÁST A.2 – ZKOUŠENÍ
     // =========================================================
 
     // Načti data A.2 pro tohoto učitele z zkouseni_prirazeni
-    $stmtA2 = $pdo->prepare("
-        SELECT
-            p.zkratka,
-            zp.pocet_kl,
-            zp.pocet_zap,
-            zp.pocet_zk,
-            zp.pocet_dz
-        FROM zkouseni_prirazeni zp
-        JOIN predmet p ON p.id = zp.predmetid AND p.IdVerze = zp.IdVerze
-        WHERE zp.teacherid = ?
-          AND zp.IdVerze   = ?
-          AND (zp.pocet_kl + zp.pocet_zap + zp.pocet_zk + zp.pocet_dz) > 0
-        ORDER BY p.zkratka
-    ");
-    $stmtA2->execute([$teacherId, $idVerze]);
-    $a2Rows = $stmtA2->fetchAll(PDO::FETCH_ASSOC);
+    $a2Rows = getTeacherA2ExportRows($pdo, $teacherId, $idVerze);
 
     // Počet řádků vložených pro A.1 (posun A.2 sekce)
     $a1RowsInserted = max(0, $neededRows - $templateDataRows);
@@ -298,6 +262,10 @@ function exportUvazekDoExcelu(int $teacherId): string
         foreach (['A','B','C','D','E'] as $col) {
             $sheet1->setCellValue($col . $row, null);
         }
+        $sheet1->setCellValue("F{$row}", "=B{$row}*'Pomocný'!\$C\$12");
+        $sheet1->setCellValue("G{$row}", "=C{$row}*'Pomocný'!\$D\$12");
+        $sheet1->setCellValue("H{$row}", "=D{$row}*'Pomocný'!\$E\$12");
+        $sheet1->setCellValue("I{$row}", "=E{$row}*'Pomocný'!\$F\$12");
     }
 
     // Zápis dat A.2
@@ -312,7 +280,22 @@ function exportUvazekDoExcelu(int $teacherId): string
         $a2CurrentRow++;
     }
 
+    $a2TotalRow = 23 + $a1RowsInserted;
+    $sheet1->setCellValue("S{$a2TotalRow}", "=SUM(F{$a2StartRow}:I{$a2EndWriteRow})");
+    $sheet1->setCellValue("T{$a2TotalRow}", "=S{$a2TotalRow}/\$B\$5");
+
+    // Souhrnné hodnoty oblastí, které aplikace eviduje agregovaně.
+    $a2RowsInserted = max(0, $a2NeededRows - $a2TemplateRows);
+    $totalRowsInserted = $a1RowsInserted + $a2RowsInserted;
+    $sheet1->setCellValue('S' . (39 + $totalRowsInserted), (float)$workload['a3']);
+    $sheet1->setCellValue('S' . (53 + $totalRowsInserted), (float)$workload['b']);
+    $sheet1->setCellValue('S' . (93 + $totalRowsInserted), (float)$workload['c']);
+    $sheet1->setCellValue('S' . (114 + $totalRowsInserted), (float)$workload['d']);
+
     $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+    // Celý formulář obsahuje mnoho vzorců. Přepočet provede Excel při otevření;
+    // server tak negeneruje export desítky sekund až minut.
+    $writer->setPreCalculateFormulas(false);
     $writer->save($outputPath);
 
     return $outputPath;
@@ -321,4 +304,284 @@ function exportUvazekDoExcelu(int $teacherId): string
 function getA2PredmetyProExportForKatedra(PDO $pdo, string $katedra, ?string $semestr = null): array
 {
     return getA2PredmetyProExport($pdo, $katedra, $semestr);
+}
+
+/**
+ * Společné formátování hlavičky tabulky v exportu.
+ */
+function styleExportHeader(Worksheet $sheet, string $range): void
+{
+    $sheet->getStyle($range)->getFont()->setBold(true);
+    $sheet->getStyle($range)->getFill()
+        ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+        ->getStartColor()->setRGB('DCE6F1');
+    $sheet->getStyle($range)->getBorders()->getAllBorders()
+        ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
+}
+
+/**
+ * Export přehledové tabulky vytížení jednotlivých vyučujících.
+ *
+ * @param array $filters search, katedra, fakulta
+ * @param array|null $teacherIds Konkrétní vyučující vybraní checkboxy; null = všichni dle filtru.
+ * @return string Cesta k vygenerovanému souboru.
+ */
+function exportPrehledVytizeni(array $filters = [], ?array $teacherIds = null): string
+{
+    require_once __DIR__ . '/functions-overview-ucitele.php';
+
+    $pdo = connectToDatabase();
+    $idVerze = getAktivniVerze($pdo);
+    $threshold = getWorkloadOverloadThreshold($pdo, $idVerze);
+    $fullTimePoints = getWorkloadFullTimePoints($pdo, $idVerze);
+
+    $normalizedTeacherIds = $teacherIds === null ? null : normalizeTeacherIds($teacherIds);
+    if ($teacherIds !== null && $normalizedTeacherIds === []) {
+        throw new InvalidArgumentException('Pro export vyberte alespoň jednoho učitele.');
+    }
+
+    $teachers = getAllTeachersForExport($pdo, $filters, $normalizedTeacherIds);
+    if ($teachers === []) {
+        throw new InvalidArgumentException('Výběru neodpovídá žádný učitel.');
+    }
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Vytíženost');
+
+    $sheet->setCellValue('A1', 'Přehled vytíženosti vyučujících');
+    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+    $popisFiltru = [];
+    if (!empty($filters['fakulta'])) {
+        $popisFiltru[] = 'fakulta: ' . $filters['fakulta'];
+    }
+    if (!empty($filters['katedra'])) {
+        $stmt = $pdo->prepare("SELECT zkratka FROM pracoviste WHERE idpracoviste = ? AND IdVerze = ?");
+        $stmt->execute([$filters['katedra'], $idVerze]);
+        $popisFiltru[] = 'katedra: ' . ($stmt->fetchColumn() ?: $filters['katedra']);
+    }
+    if (!empty($filters['search'])) {
+        $popisFiltru[] = 'hledání: ' . $filters['search'];
+    }
+    if ($normalizedTeacherIds !== null) {
+        $popisFiltru[] = 'ruční výběr: ' . count($normalizedTeacherIds) . ' uč.';
+    }
+
+    $sheet->setCellValue('A2', $popisFiltru
+        ? 'Filtr – ' . implode(', ', $popisFiltru)
+        : 'Filtr – všichni vyučující');
+    $sheet->setCellValue('A3', 'Hranice přetíženosti: ' . $threshold . ' % úvazku');
+    $sheet->setCellValue('A4', 'Plný úvazek: ' . $fullTimePoints . ' PB');
+    $sheet->setCellValue('A5', 'Vygenerováno: ' . date('d.m.Y H:i'));
+    $sheet->getStyle('A2:A5')->getFont()->setItalic(true)->setSize(9);
+
+    $headers = [
+        'Příjmení', 'Jméno', 'Katedra', 'Fakulta', 'Úvazek',
+        'A.1 přímá výuka', 'A.2 zkoušení', 'A.3 ostatní', 'B tvůrčí',
+        'C administrativa', 'D další', 'Celkem PB', 'Kapacita PB',
+        'Vytíženost %', 'Stav',
+    ];
+
+    $headerRow = 7;
+    $sheet->fromArray([$headers], null, 'A' . $headerRow);
+    styleExportHeader($sheet, 'A' . $headerRow . ':O' . $headerRow);
+
+    $row = $headerRow + 1;
+    $pocetPretizenych = 0;
+
+    foreach ($teachers as $teacher) {
+        $w = $teacher['workload'] ?? null;
+
+        if ($w === null) {
+            $sheet->fromArray([[
+                $teacher['surname'], $teacher['name'],
+                $teacher['katedra'] ?? '', $teacher['fakulta'] ?? '',
+                '', '', '', '', '', '', '', '', '', '', 'Bez dat',
+            ]], null, 'A' . $row);
+            $row++;
+            continue;
+        }
+
+        $jePretizen = !empty($w['is_overloaded']);
+        if ($jePretizen) {
+            $pocetPretizenych++;
+        }
+
+        $stav = $w['percent'] === null
+            ? 'Bez kapacity'
+            : ($jePretizen ? 'PŘETÍŽEN' : ($w['percent'] >= 80 ? 'V normě' : 'Nízké vytížení'));
+
+        $sheet->fromArray([[
+            $teacher['surname'],
+            $teacher['name'],
+            $teacher['katedra'] ?? '',
+            $teacher['fakulta'] ?? '',
+            (float)$w['uvazek'],
+            (float)$w['a1'],
+            (float)$w['a2'],
+            (float)$w['a3'],
+            (float)$w['b'],
+            (float)$w['c'],
+            (float)$w['d'],
+            (float)$w['total'],
+            (float)$w['capacity'],
+            $w['percent'],
+            $stav,
+        ]], null, 'A' . $row);
+
+        if ($jePretizen) {
+            $sheet->getStyle("A{$row}:O{$row}")->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('F8D7DA');
+        }
+
+        $row++;
+    }
+
+    $lastRow = $row - 1;
+
+    if ($lastRow >= $headerRow + 1) {
+        $sumRow = $row + 1;
+        $sheet->setCellValue('A' . $sumRow, 'Součet / průměr');
+        $sheet->setCellValue('F' . $sumRow, "=SUM(F" . ($headerRow + 1) . ":F{$lastRow})");
+        $sheet->setCellValue('G' . $sumRow, "=SUM(G" . ($headerRow + 1) . ":G{$lastRow})");
+        $sheet->setCellValue('L' . $sumRow, "=SUM(L" . ($headerRow + 1) . ":L{$lastRow})");
+        $sheet->setCellValue('M' . $sumRow, "=SUM(M" . ($headerRow + 1) . ":M{$lastRow})");
+        $sheet->setCellValue('N' . $sumRow, "=AVERAGE(N" . ($headerRow + 1) . ":N{$lastRow})");
+        $sheet->getStyle("A{$sumRow}:O{$sumRow}")->getFont()->setBold(true);
+
+        $sheet->setCellValue('A' . ($sumRow + 1), 'Počet přetížených vyučujících: ' . $pocetPretizenych);
+        $sheet->getStyle('A' . ($sumRow + 1))->getFont()->setBold(true);
+
+        $sheet->getStyle('N' . ($headerRow + 1) . ':N' . $lastRow)
+            ->getNumberFormat()->setFormatCode('0.0');
+        $sheet->getStyle('F' . ($headerRow + 1) . ':M' . $lastRow)
+            ->getNumberFormat()->setFormatCode('0.00');
+
+        $sheet->setAutoFilter('A' . $headerRow . ':O' . $lastRow);
+    }
+
+    foreach (range('A', 'O') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    $sheet->freezePane('A' . ($headerRow + 1));
+
+    $outputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+        . 'prehled-vytizenosti-' . date('Y-m-d') . '.xlsx';
+
+    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer->save($outputPath);
+    $spreadsheet->disconnectWorksheets();
+
+    return $outputPath;
+}
+
+/**
+ * Export tabulky nepokryté výuky.
+ *
+ * @param array $filters katedra, fakulta, semestr, zkratka, nazev
+ * @return string Cesta k vygenerovanému souboru.
+ */
+function exportNepokrytePredmety(array $filters = []): string
+{
+    require_once __DIR__ . '/coverage-functions.php';
+
+    $pdo = connectToDatabase();
+    $idVerze = getAktivniVerze($pdo);
+
+    $nepokryte = getNepokrytePredmety($pdo, $idVerze, $filters);
+    $statistiky = getPokrytiStatistiky($pdo, $idVerze, $filters);
+
+    $typNazvy = ['P' => 'Přednáška', 'C' => 'Cvičení', 'S' => 'Seminář', 'R' => 'Ateliér'];
+
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+
+    // List 1 – detail po částech výuky
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Nepokrytá výuka');
+
+    $sheet->setCellValue('A1', 'Nepokrytá výuka');
+    $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+    $sheet->setCellValue('A2', 'Předmět je uveden, pokud jakákoliv jeho část výuky není plně pokrytá.');
+    $sheet->setCellValue('A3', 'Vygenerováno: ' . date('d.m.Y H:i'));
+    $sheet->getStyle('A2:A3')->getFont()->setItalic(true)->setSize(9);
+
+    $headers = [
+        'Zkratka', 'Název', 'Semestr', 'Rok', 'Katedra', 'Fakulta',
+        'Typ výuky', 'Jazyk', 'Pokrytí části %', 'Chybí v části %', 'Důvod',
+        'Pokrytí předmětu %', 'Nepokrytých částí', 'Částí celkem',
+    ];
+    $headerRow = 5;
+    $sheet->fromArray([$headers], null, 'A' . $headerRow);
+    styleExportHeader($sheet, 'A' . $headerRow . ':N' . $headerRow);
+
+    $row = $headerRow + 1;
+    foreach ($nepokryte as $predmet) {
+        foreach ($predmet['casti'] as $cast) {
+            $sheet->fromArray([[
+                $predmet['zkratka'],
+                $predmet['nazev'],
+                $predmet['semestr'],
+                $predmet['rok'],
+                $predmet['katedra'],
+                $predmet['fakulta'],
+                $typNazvy[$cast['typ']] ?? $cast['typ'],
+                $cast['jazyk_nazev'] ?? '',
+                (float)$cast['soucet_podilu'],
+                (float)$cast['chybi'],
+                $cast['duvod'],
+                (float)$predmet['pokryti_procent'],
+                (int)$predmet['pocet_casti'],
+                (int)$predmet['pocet_casti_celkem'],
+            ]], null, 'A' . $row);
+
+            if ($cast['soucet_podilu'] <= 0) {
+                $sheet->getStyle("A{$row}:N{$row}")->getFill()
+                    ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                    ->getStartColor()->setRGB('F8D7DA');
+            }
+            $row++;
+        }
+    }
+
+    $lastRow = $row - 1;
+    if ($lastRow >= $headerRow + 1) {
+        $sheet->getStyle('I' . ($headerRow + 1) . ':J' . $lastRow)
+            ->getNumberFormat()->setFormatCode('0.00');
+        $sheet->getStyle('L' . ($headerRow + 1) . ':L' . $lastRow)
+            ->getNumberFormat()->setFormatCode('0.0');
+        $sheet->setAutoFilter('A' . $headerRow . ':N' . $lastRow);
+    }
+
+    foreach (range('A', 'N') as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    $sheet->freezePane('A' . ($headerRow + 1));
+
+    // List 2 – souhrn
+    $summary = $spreadsheet->createSheet();
+    $summary->setTitle('Souhrn');
+    $summary->fromArray([
+        ['Souhrn pokrytí výuky'],
+        [],
+        ['Předmětů celkem', $statistiky['celkem_predmetu']],
+        ['Pokrytých předmětů', $statistiky['pokrytych_predmetu']],
+        ['Nepokrytých předmětů', $statistiky['nepokrytych_predmetu']],
+        ['Nepokrytých částí výuky', $statistiky['nepokrytych_casti']],
+        ['Pokrytí předmětů (%)', $statistiky['procento_pokryti']],
+    ], null, 'A1');
+    $summary->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+    $summary->getStyle('A3:A7')->getFont()->setBold(true);
+    $summary->getColumnDimension('A')->setAutoSize(true);
+    $summary->getColumnDimension('B')->setAutoSize(true);
+
+    $outputPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR
+        . 'nepokryta-vyuka-' . date('Y-m-d') . '.xlsx';
+
+    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+    $writer->save($outputPath);
+    $spreadsheet->disconnectWorksheets();
+
+    return $outputPath;
 }

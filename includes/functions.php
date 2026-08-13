@@ -18,19 +18,172 @@ function safeEcho($message) {
     echo nl2br(h($message) . "\n");
 }
 
-function stagAuthContext() {
-    require __DIR__ . '/config.php';
+function startAppSession(): void {
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return;
+    }
 
-    $auth = base64_encode($username . ':' . $password);
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    ]);
+
+    session_start();
+}
+
+function saveStagCredentialsToSession(string $username, string $password): void {
+    startAppSession();
+
+    $_SESSION['stag_credentials'] = [
+        'username' => trim($username),
+        'password' => $password,
+        'saved_at' => time(),
+    ];
+}
+
+function clearStagCredentialsFromSession(): void {
+    startAppSession();
+    unset($_SESSION['stag_credentials']);
+}
+
+function getStagCredentialsFromSession(): ?array {
+    startAppSession();
+
+    $credentials = $_SESSION['stag_credentials'] ?? null;
+    if (!is_array($credentials)) {
+        return null;
+    }
+
+    $username = trim((string)($credentials['username'] ?? ''));
+    $password = (string)($credentials['password'] ?? '');
+
+    if ($username === '' || $password === '') {
+        return null;
+    }
+
+    return [
+        'username' => $username,
+        'password' => $password,
+        'saved_at' => $credentials['saved_at'] ?? null,
+    ];
+}
+
+function hasStagCredentials(): bool {
+    return getStagCredentialsFromSession() !== null;
+}
+
+function stagRequestContext(?array $credentials = null) {
+    $headers = [
+        'Accept: application/json',
+        'User-Agent: ATPU-DG/1.0',
+    ];
+
+    if ($credentials !== null) {
+        $auth = base64_encode($credentials['username'] . ':' . $credentials['password']);
+        $headers[] = "Authorization: Basic $auth";
+    }
 
     return stream_context_create([
         'http' => [
             'method' => 'GET',
-            'header' => "Authorization: Basic $auth\r\nAccept: application/json\r\n",
+            'header' => implode("\r\n", $headers) . "\r\n",
             'timeout' => 60,
             'ignore_errors' => true
         ]
     ]);
+}
+
+function stagAuthContext() {
+    $credentials = getStagCredentialsFromSession();
+
+    if ($credentials === null) {
+        throw new Exception('Pred importem ze STAGu zadejte prihlasovaci udaje. Udaje se ukladaji pouze do serverove session.');
+    }
+
+    return stagRequestContext($credentials);
+}
+
+function stagPublicContext() {
+    return stagRequestContext(null);
+}
+
+function stagHttpStatusCode(array $headers): ?int {
+    foreach ($headers as $header) {
+        if (preg_match('/^HTTP\/\S+\s+(\d{3})\b/', (string)$header, $matches)) {
+            return (int)$matches[1];
+        }
+    }
+
+    return null;
+}
+
+function stagReadUrl(string $url, $context): array {
+    $response = @file_get_contents($url, false, $context);
+    $headers = $GLOBALS['http_response_header'] ?? [];
+    $status = stagHttpStatusCode($headers);
+    $error = null;
+
+    if ($response === false) {
+        $err = error_get_last();
+        $error = $err['message'] ?? 'neznamy problem spojeni';
+    }
+
+    return [
+        'response' => $response,
+        'headers' => $headers,
+        'status' => $status,
+        'error' => $error,
+        'snippet' => is_string($response) ? mb_substr($response, 0, 1000) : '',
+    ];
+}
+
+function stagLooksUnauthorized(?int $status, $response): bool {
+    return $status === 401 || (is_string($response) && stripos($response, 'Unauthorized') !== false);
+}
+
+function assertStagCredentialsValid(): void {
+    if (!hasStagCredentials()) {
+        throw new Exception('Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.');
+    }
+
+    $url = 'https://stag-ws.utb.cz/ws/services/rest2/ciselniky/getSeznamPracovist'
+        . '?typPracoviste=%25&zkratka=%25&nadrazenePracoviste=%25&outputFormat=JSON';
+
+    $result = stagReadUrl($url, stagAuthContext());
+    $response = $result['response'];
+    $status = $result['status'];
+
+    if ($response === false) {
+        $publicResult = stagReadUrl($url, stagPublicContext());
+        if ($publicResult['response'] !== false && !stagLooksUnauthorized($publicResult['status'], $publicResult['response'])) {
+            safeEcho('Autentizovany test STAGu selhal, ale verejny endpoint odpovedel bez prihlaseni. Import bude pokracovat anonymnim dotazem tam, kde to STAG dovoli.');
+            return;
+        }
+
+        throw new Exception('Test spojeni se STAGem selhal: ' . $result['error']);
+    }
+
+    if (stagLooksUnauthorized($status, $response)) {
+        $publicResult = stagReadUrl($url, stagPublicContext());
+        if ($publicResult['response'] !== false && !stagLooksUnauthorized($publicResult['status'], $publicResult['response'])) {
+            safeEcho('STAG odmitl zadane prihlasovaci udaje, ale verejny endpoint odpovedel bez prihlaseni. Import bude pokracovat anonymnim dotazem tam, kde to STAG dovoli.');
+            return;
+        }
+
+        throw new Exception('STAG odmitl prihlasovaci udaje. Zkontrolujte prosim login a heslo.');
+    }
+
+    if ($status !== null && $status >= 400) {
+        throw new Exception('STAG vratil HTTP ' . $status . ' pri testu prihlaseni.');
+    }
+
+    $data = json_decode($response, true);
+    if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('STAG vratil neocekavanou odpoved pri testu prihlaseni: ' . json_last_error_msg());
+    }
 }
 
 // function stagGetJson($url, $maxAttempts = 3, $sleepMs = 800) {
@@ -70,16 +223,17 @@ function stagGetJson($url, $maxAttempts = 3, $sleepMs = 800) {
     $lastError = null;
     $lastHeaders = [];
     $lastResponseSnippet = '';
+    $usedPublicFallback = false;
 
     for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-        $context = stagAuthContext();
-        $response = @file_get_contents($url, false, $context);
-        $headers = $GLOBALS['http_response_header'] ?? [];
+        $result = stagReadUrl($url, $usedPublicFallback ? stagPublicContext() : stagAuthContext());
+        $response = $result['response'];
+        $headers = $result['headers'];
         $lastHeaders = $headers;
+        $status = $result['status'];
 
         if ($response === false) {
-            $err = error_get_last();
-            $lastError = $err['message'] ?? 'Neznámá chyba';
+            $lastError = $result['error'] ?? 'Neznámá chyba';
 
             if ($attempt < $maxAttempts) {
                 usleep($sleepMs * 1000);
@@ -89,7 +243,22 @@ function stagGetJson($url, $maxAttempts = 3, $sleepMs = 800) {
             break;
         }
 
-        $lastResponseSnippet = mb_substr($response, 0, 1000);
+        $lastResponseSnippet = $result['snippet'];
+
+        if (stagLooksUnauthorized($status, $response)) {
+            if (!$usedPublicFallback) {
+                $usedPublicFallback = true;
+                $attempt = 0;
+                usleep($sleepMs * 1000);
+                continue;
+            }
+
+            throw new Exception("STAG odmitl prihlasovaci udaje a anonymni fallback pro URL: $url");
+        }
+
+        if ($status !== null && $status >= 400) {
+            throw new Exception("STAG request failed with HTTP {$status} for URL: $url | response snippet: " . $lastResponseSnippet);
+        }
 
         // 1) první pokus: decode bez úprav
         $data = json_decode($response, true);
@@ -249,6 +418,86 @@ function runMigrations(PDO $pdo): void
     } catch (\Throwable $e) {
         error_log('Migration 005b failed: ' . $e->getMessage());
     }
+
+    // Migrace 006: pravidla a individuální nastavení pracovních úvazků.
+    try {
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS uvazek_koeficient (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                IdVerze INT NOT NULL,
+                oblast VARCHAR(2) NOT NULL,
+                druh VARCHAR(20) NOT NULL,
+                aktivita VARCHAR(10) NOT NULL,
+                hodnota DECIMAL(10,4) NOT NULL,
+                UNIQUE KEY uniq_uvazek_koeficient (IdVerze, oblast, druh, aktivita)
+            )
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS ucitel_uvazek_nastaveni (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                teacherid INT NOT NULL,
+                IdVerze INT NOT NULL,
+                uvazek DECIMAL(6,4) NOT NULL DEFAULT 1.0000,
+                pozice VARCHAR(100) NULL,
+                nastup DATE NULL,
+                vyjimka TINYINT(1) NOT NULL DEFAULT 0,
+                pb_a3 DECIMAL(12,2) NOT NULL DEFAULT 0,
+                pb_b DECIMAL(12,2) NOT NULL DEFAULT 0,
+                pb_c DECIMAL(12,2) NOT NULL DEFAULT 0,
+                pb_d DECIMAL(12,2) NOT NULL DEFAULT 0,
+                poznamka TEXT NULL,
+                UNIQUE KEY uniq_ucitel_uvazek (teacherid, IdVerze)
+            )
+        ");
+    } catch (\Throwable $e) {
+        error_log('Migration 006a failed: ' . $e->getMessage());
+    }
+
+    try {
+        $stmt = $pdo->query("
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'ucitelpredmetprirazeni'
+              AND COLUMN_NAME = 'druh_predmetu'
+        ");
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec("
+                ALTER TABLE ucitelpredmetprirazeni
+                ADD COLUMN druh_predmetu VARCHAR(20) NOT NULL DEFAULT 'auto' AFTER jazyk
+            ");
+        }
+    } catch (\Throwable $e) {
+        error_log('Migration 006b failed: ' . $e->getMessage());
+    }
+
+    // Migrace 007: doplnit explicitni jednotku pro hodiny za mesic.
+    try {
+        $pdo->exec("
+            INSERT IGNORE INTO vyukove_jednotky (id, zkratka, popis)
+            VALUES (3, 'HOD/MES', 'Hodiny za mesic')
+        ");
+    } catch (\Throwable $e) {
+        error_log('Migration 007 failed: ' . $e->getMessage());
+    }
+
+    // Migrace 008: oznacit rucne upravene radky prirazeni, aby je dalsi import neprepsal.
+    try {
+        $stmt = $pdo->query("
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'ucitelpredmetprirazeni'
+              AND COLUMN_NAME = 'upraveno_rucne'
+        ");
+        if ((int)$stmt->fetchColumn() === 0) {
+            $pdo->exec("
+                ALTER TABLE ucitelpredmetprirazeni
+                ADD COLUMN upraveno_rucne TINYINT(1) NOT NULL DEFAULT 0 AFTER druh_predmetu
+            ");
+        }
+    } catch (\Throwable $e) {
+        error_log('Migration 008 failed: ' . $e->getMessage());
+    }
 }
 
 function getAktivniVerze($pdo) {
@@ -354,6 +603,71 @@ function findTeacherDbIdByUcitIdno($pdo, $ucitIdno, $idVerze = null) {
     return $id !== false ? (int)$id : null;
 }
 
+function upsertUcitelPredmetPrirazeni(PDO $pdo, int $predmetid, ?int $teacherid, string $typ, float $podil, int $idVerze, int $jazyk, string $druhPredmetu = 'auto'): void {
+    if ($teacherid !== null) {
+        $stmtDeletePlaceholder = $pdo->prepare("
+            DELETE FROM ucitelpredmetprirazeni
+            WHERE predmetid = ?
+              AND teacherid IS NULL
+              AND typ = ?
+              AND jazyk = ?
+              AND IdVerze = ?
+              AND COALESCE(druh_predmetu, 'auto') = ?
+              AND COALESCE(upraveno_rucne, 0) = 0
+        ");
+        $stmtDeletePlaceholder->execute([$predmetid, $typ, $jazyk, $idVerze, $druhPredmetu]);
+    }
+
+    $stmtFind = $pdo->prepare("
+        SELECT id
+        FROM ucitelpredmetprirazeni
+        WHERE predmetid = ?
+          AND teacherid <=> ?
+          AND typ = ?
+          AND jazyk = ?
+          AND IdVerze = ?
+          AND COALESCE(druh_predmetu, 'auto') = ?
+          AND COALESCE(upraveno_rucne, 0) = 0
+        ORDER BY id
+        LIMIT 1
+    ");
+    $stmtFind->execute([$predmetid, $teacherid, $typ, $jazyk, $idVerze, $druhPredmetu]);
+    $existingId = $stmtFind->fetchColumn();
+
+    if ($existingId !== false) {
+        $stmtUpdate = $pdo->prepare("
+            UPDATE ucitelpredmetprirazeni
+            SET podil = ?, druh_predmetu = ?, upraveno_rucne = 0
+            WHERE id = ?
+        ");
+        $stmtUpdate->execute([$podil, $druhPredmetu, (int)$existingId]);
+        return;
+    }
+
+    $stmtInsert = $pdo->prepare("
+        INSERT INTO ucitelpredmetprirazeni
+            (predmetid, teacherid, typ, podil, IdVerze, jazyk, druh_predmetu)
+        VALUES
+            (?, ?, ?, ?, ?, ?, ?)
+    ");
+    $stmtInsert->execute([$predmetid, $teacherid, $typ, $podil, $idVerze, $jazyk, $druhPredmetu]);
+}
+
+function hasUcitelPredmetTeacherAssignment(PDO $pdo, int $predmetid, string $typ, int $idVerze, int $jazyk, string $druhPredmetu = 'auto'): bool {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM ucitelpredmetprirazeni
+        WHERE predmetid = ?
+          AND teacherid IS NOT NULL
+          AND typ = ?
+          AND jazyk = ?
+          AND IdVerze = ?
+          AND COALESCE(druh_predmetu, 'auto') = ?
+    ");
+    $stmt->execute([$predmetid, $typ, $jazyk, $idVerze, $druhPredmetu]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+
 function getPredmetIdByZkratkaARok($pdo, $zkratka, $rok, $semestr, $idVerze = null) {
     if ($idVerze === null) {
         $idVerze = getAktivniVerze($pdo);
@@ -413,7 +727,14 @@ function normalizeJazykKod($jazyk) {
 }
 
 function normalizeVyukovaJednotka($jednotka) {
-    return ($jednotka === 'HOD/SEM') ? 1 : 2;
+    $jednotka = mb_strtoupper(trim((string)$jednotka));
+    if ($jednotka === 'HOD/SEM' || str_contains($jednotka, '/SEM')) {
+        return 1;
+    }
+    if ($jednotka === 'HOD/MES' || $jednotka === 'HOD/MĚS' || str_contains($jednotka, '/MES') || str_contains($jednotka, '/MĚS')) {
+        return 3;
+    }
+    return 2;
 }
 
 function stringToIntArray($string) {
@@ -672,6 +993,8 @@ function onInit(PDO $pdo) {
             predmetid INT,
             teacherid INT NULL DEFAULT NULL,
             jazyk INT NOT NULL DEFAULT 0,
+            druh_predmetu VARCHAR(20) NOT NULL DEFAULT 'auto',
+            upraveno_rucne TINYINT(1) NOT NULL DEFAULT 0,
             typ VARCHAR(7),
             podil FLOAT DEFAULT 100,
             max_pocet_studentu INT NULL,
@@ -702,6 +1025,32 @@ function onInit(PDO $pdo) {
             Hodnota INT NULL,
             HodnotaChar VARCHAR(100) NULL,
             IdVerze INT
+        )");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS uvazek_koeficient (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            IdVerze INT NOT NULL,
+            oblast VARCHAR(2) NOT NULL,
+            druh VARCHAR(20) NOT NULL,
+            aktivita VARCHAR(10) NOT NULL,
+            hodnota DECIMAL(10,4) NOT NULL,
+            UNIQUE KEY uniq_uvazek_koeficient (IdVerze, oblast, druh, aktivita)
+        )");
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ucitel_uvazek_nastaveni (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            teacherid INT NOT NULL,
+            IdVerze INT NOT NULL,
+            uvazek DECIMAL(6,4) NOT NULL DEFAULT 1.0000,
+            pozice VARCHAR(100) NULL,
+            nastup DATE NULL,
+            vyjimka TINYINT(1) NOT NULL DEFAULT 0,
+            pb_a3 DECIMAL(12,2) NOT NULL DEFAULT 0,
+            pb_b DECIMAL(12,2) NOT NULL DEFAULT 0,
+            pb_c DECIMAL(12,2) NOT NULL DEFAULT 0,
+            pb_d DECIMAL(12,2) NOT NULL DEFAULT 0,
+            poznamka TEXT NULL,
+            UNIQUE KEY uniq_ucitel_uvazek (teacherid, IdVerze)
         )");
 
         $pdo->exec("CREATE TABLE IF NOT EXISTS errnumber (
@@ -825,6 +1174,7 @@ function onInit(PDO $pdo) {
 
         $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (1, 'HOD/SEM', 'Hodiny za semestr')");
         $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (2, 'HOD/TYD', 'Hodiny za týden')");
+        $pdo->exec("INSERT INTO vyukove_jednotky (id, zkratka, popis) VALUES (3, 'HOD/MES', 'Hodiny za mesic')");
         $pdo->exec("INSERT INTO seq_ucitIdnoExternista (id, cislo) VALUES (1, 0)");
         $pdo->exec("INSERT INTO jazyk (id, zkratka, popis) VALUES (1, 'ČJ', 'Čeština')");
         $pdo->exec("INSERT INTO jazyk (id, zkratka, popis) VALUES (2, 'AJ', 'Angličtina')");
@@ -1657,22 +2007,23 @@ function insertTeachedLastYP($pdo, $predmetid, $teacherid) {
 }
 
 // BUG FIX: přidán parametr $jazyk (dříve bylo vždy 0 = neplatný jazyk)
-// BUG FIX: INSERT IGNORE nahrazen ON DUPLICATE KEY UPDATE (IGNORE tiše skrývalo chyby)
-function insertCurrentY($pdo, $predmetid, $teacherid, $typ, $jazyk = 1) {
+// $ucitIdno je STAG identifikátor učitele; do ucitelpredmetprirazeni ukládáme interní teachers.id.
+function insertCurrentY($pdo, $predmetid, $ucitIdno, $typ, $jazyk = 1, $podil = 100.0) {
     try {
         $IdVerze = getAktivniVerze($pdo);
-        $teacherid = (int)$teacherid;
+        $ucitIdno = (int)$ucitIdno;
         $jazyk = (int)$jazyk;
+        $podil = max(0.0, min(100.0, (float)$podil));
+        $teacherid = findTeacherDbIdByUcitIdno($pdo, $ucitIdno, $IdVerze);
 
-        $query = "
-            INSERT INTO ucitelpredmetprirazeni (predmetid, teacherid, jazyk, typ, podil, IdVerze)
-            VALUES (?, ?, ?, ?, 100, ?)
-            ON DUPLICATE KEY UPDATE podil = VALUES(podil)
-        ";
-        $stmt = $pdo->prepare($query);
-        $stmt->execute([$predmetid, $teacherid, $jazyk, $typ, $IdVerze]);
+        if ($teacherid === null) {
+            safeEcho("Loňský učitel nenalezen v aktuální verzi, přeskočeno: ucitIdno=$ucitIdno, predmetid=$predmetid, typ=$typ, jazyk=$jazyk");
+            return;
+        }
 
-        safeEcho("Aktuální přiřazení uloženo: $predmetid, $teacherid, typ=$typ, jazyk=$jazyk");
+        upsertUcitelPredmetPrirazeni($pdo, (int)$predmetid, $teacherid, (string)$typ, $podil, $IdVerze, $jazyk);
+
+        safeEcho("Aktuální přiřazení uloženo: $predmetid, teacherid=$teacherid (ucitIdno=$ucitIdno), typ=$typ, jazyk=$jazyk, podil=$podil");
     } catch (PDOException $e) {
         safeEcho("error: " . $e->getMessage());
     }
@@ -1827,6 +2178,7 @@ function getPredmetyByKatedra($pdo, $katedra, $semestr = null) {
         }
 
         foreach ($data['predmetKatedryFullInfo'] as $predmet) {
+            $predmetSemestr = normalizeImportSemestr($predmet['semestr'] ?? $semestr, $pdo);
             $predmetId = insertPredmet(
                 $pdo,
                 $predmet['zkratka'] ?? null,
@@ -1836,7 +2188,7 @@ function getPredmetyByKatedra($pdo, $katedra, $semestr = null) {
                 $predmet['prednasejiciUcitIdno'] ?? null,
                 $predmet['vyucovaciJazyky'] ?? null,
                 $predmet['rok'] ?? $year,
-                $semestr,
+                $predmetSemestr,
                 $idPracoviste,
                 $predmet['typZkousky'] ?? null,
                 $predmet['aSkut'] ?? 0,
@@ -2030,6 +2382,7 @@ function getPredmetyByKatedraLast($pdo, $katedra, $semestr = null) {
         }
 
         foreach ($data['predmetKatedryFullInfo'] as $predmet) {
+            $predmetSemestr = normalizeImportSemestr($predmet['semestr'] ?? $semestr, $pdo);
             insertPredmetLast(
                 $pdo,
                 $predmet['zkratka'] ?? null,
@@ -2039,7 +2392,7 @@ function getPredmetyByKatedraLast($pdo, $katedra, $semestr = null) {
                 $predmet['prednasejiciUcitIdno'] ?? null,
                 $predmet['vyucovaciJazyky'] ?? null,
                 $predmet['rok'] ?? $year,
-                $semestr
+                $predmetSemestr
             );
         }
     } catch (Exception $e) {
@@ -2373,7 +2726,7 @@ function teachedlastyear($pdo) {
 function insertTeacherAssingByLastYear($pdo) {
     $verze = getAktivniVerze($pdo);
     $stmt = $pdo->prepare("
-        SELECT DISTINCT p.id, upl.teacherid, upl.typ
+        SELECT DISTINCT p.id, upl.teacherid AS ucitIdno, upl.typ
         FROM predmet p
         JOIN predmetlast pl
             ON p.zkratka = pl.zkratka
@@ -2392,6 +2745,8 @@ function insertTeacherAssingByLastYear($pdo) {
     // Dříve se volalo insertCurrentY() bez jazyku → vkládalo jazyk=0 (neplatný FK)
     $stmtJazyky = $pdo->prepare("SELECT jazykid FROM vwPredmetJazyk WHERE predmetid = ?");
 
+    $groups = [];
+
     foreach ($lasty as $last) {
         $stmtJazyky->execute([$last['id']]);
         $jazykIds = $stmtJazyky->fetchAll(PDO::FETCH_COLUMN);
@@ -2406,7 +2761,24 @@ function insertTeacherAssingByLastYear($pdo) {
         $mappedTyp = $typMap[$last['typ']] ?? $last['typ'];
 
         foreach ($jazykIds as $jazykId) {
-            insertCurrentY($pdo, $last['id'], $last['teacherid'], $mappedTyp, (int)$jazykId);
+            $key = implode('|', [(int)$last['id'], $mappedTyp, (int)$jazykId]);
+            $groups[$key]['predmetid'] = (int)$last['id'];
+            $groups[$key]['typ'] = $mappedTyp;
+            $groups[$key]['jazyk'] = (int)$jazykId;
+            $groups[$key]['ucitIdna'][(int)$last['ucitIdno']] = true;
+        }
+    }
+
+    foreach ($groups as $group) {
+        $ucitIdna = array_keys($group['ucitIdna']);
+        $teacherCount = count($ucitIdna);
+        if ($teacherCount === 0) {
+            continue;
+        }
+
+        $podil = round(100 / $teacherCount, 2);
+        foreach ($ucitIdna as $ucitIdno) {
+            insertCurrentY($pdo, $group['predmetid'], $ucitIdno, $group['typ'], $group['jazyk'], $podil);
         }
     }
 }
@@ -2446,6 +2818,26 @@ function assignTeachersFromRozvrhForSemestr($pdo, $semestr) {
     $stmtPredmety->execute([$verze, $rokCurrent, $semestr]);
     $predmety = $stmtPredmety->fetchAll(PDO::FETCH_ASSOC);
 
+    $stmtDeleteAutoAssignments = $pdo->prepare("
+        DELETE FROM ucitelpredmetprirazeni
+        WHERE predmetid = ?
+          AND typ = ?
+          AND jazyk = ?
+          AND IdVerze = ?
+          AND druh_predmetu = 'auto'
+          AND COALESCE(upraveno_rucne, 0) = 0
+    ");
+
+    $stmtHasManualAssignments = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM ucitelpredmetprirazeni
+        WHERE predmetid = ?
+          AND typ = ?
+          AND jazyk = ?
+          AND IdVerze = ?
+          AND COALESCE(upraveno_rucne, 0) = 1
+    ");
+
     foreach ($predmety as $predmet) {
         $predmetId = (int)$predmet['id'];
         $zkratka = $predmet['zkratka'];
@@ -2481,36 +2873,57 @@ function assignTeachersFromRozvrhForSemestr($pdo, $semestr) {
 
             foreach ($jazykIds as $jazykId) {
                 $jazykId = (int)$jazykId;
+                $stmtHasManualAssignments->execute([$predmetId, $typ, $jazykId, $verze]);
+                if ((int)$stmtHasManualAssignments->fetchColumn() > 0) {
+                    continue;
+                }
 
                 if ($hasTeacher && $total > 0) {
+                    $stmtDeleteAutoAssignments->execute([$predmetId, $typ, $jazykId, $verze]);
+
+                    $unmatchedHours = 0.0;
                     foreach ($info['teachers'] as $ucitIdno => $hodinUcitele) {
                         $teacherId = findTeacherDbIdByUcitIdno($pdo, $ucitIdno, $verze);
                         if (!$teacherId) {
+                            $unmatchedHours += (float)$hodinUcitele;
+                            safeEcho("Rozvrhový učitel nenalezen v aktuální verzi, vytvoří se nepokrytý podíl: predmet={$zkratka}, typ={$typ}, jazyk={$jazykId}, ucitIdno={$ucitIdno}, hodiny={$hodinUcitele}");
                             continue;
                         }
 
                         $podil = round(($hodinUcitele / $total) * 100, 2);
 
-                        $stmtInsert = $pdo->prepare("
-                            INSERT INTO ucitelpredmetprirazeni (predmetid, teacherid, typ, podil, IdVerze, jazyk)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            ON DUPLICATE KEY UPDATE
-                                podil = VALUES(podil)
-                        ");
-                        $stmtInsert->execute([$predmetId, $teacherId, $typ, $podil, $verze, $jazykId]);
+                        upsertUcitelPredmetPrirazeni($pdo, $predmetId, $teacherId, $typ, $podil, $verze, $jazykId);
+                    }
+
+                    if ($unmatchedHours > 0) {
+                        $missingPodil = round(($unmatchedHours / $total) * 100, 2);
+                        upsertUcitelPredmetPrirazeni($pdo, $predmetId, null, $typ, $missingPodil, $verze, $jazykId);
                     }
                 } else {
                     // NULL teacherid nelze použít s ON DUPLICATE KEY UPDATE (NULL != NULL v UNIQUE KEY),
                     // proto nejdřív smažeme stávající placeholder a pak vložíme nový.
+                    $stmtDeleteAutoAssignments->execute([$predmetId, $typ, $jazykId, $verze]);
+
+                    if (hasUcitelPredmetTeacherAssignment($pdo, $predmetId, $typ, $verze, $jazykId)) {
+                        $stmtDel = $pdo->prepare("
+                            DELETE FROM ucitelpredmetprirazeni
+                            WHERE predmetid = ? AND teacherid IS NULL AND typ = ? AND jazyk = ? AND IdVerze = ?
+                              AND COALESCE(upraveno_rucne, 0) = 0
+                        ");
+                        $stmtDel->execute([$predmetId, $typ, $jazykId, $verze]);
+                        continue;
+                    }
+
                     $stmtDel = $pdo->prepare("
                         DELETE FROM ucitelpredmetprirazeni
                         WHERE predmetid = ? AND teacherid IS NULL AND typ = ? AND jazyk = ? AND IdVerze = ?
+                          AND COALESCE(upraveno_rucne, 0) = 0
                     ");
                     $stmtDel->execute([$predmetId, $typ, $jazykId, $verze]);
 
                     $stmtInsert = $pdo->prepare("
-                        INSERT INTO ucitelpredmetprirazeni (predmetid, teacherid, typ, podil, IdVerze, jazyk)
-                        VALUES (?, NULL, ?, 0, ?, ?)
+                        INSERT INTO ucitelpredmetprirazeni (predmetid, teacherid, typ, podil, IdVerze, jazyk, upraveno_rucne)
+                        VALUES (?, NULL, ?, 0, ?, ?, 0)
                     ");
                     $stmtInsert->execute([$predmetId, $typ, $verze, $jazykId]);
                 }
@@ -3012,21 +3425,17 @@ function vyber_verzi($pdo) {
 function getPredmetInfo($pdo, $katedra) {
     $year = getYear($pdo);
     $api_url = "https://stag-ws.utb.cz/ws/services/rest2/predmety/getPredmetyByKatedraFullInfo?semestr=LS&outputFormat=JSON&katedra=" . $katedra . "&rok=" . $year;
-    $response = file_get_contents($api_url);
     echo nl2br("\nURL API getPredmetInfo:" . $api_url . "\n");
 
     $idPracoviste = getKatedraByZkratka($pdo, $katedra);
 
-    if ($response === FALSE) {
-        echo "error in connection";
-    } else {
-        $data = json_decode($response, true);
-        if ($data === NULL) {
-            echo "Error decoding JSON response.";
-        }
+    try {
+        $data = stagGetJson($api_url);
         foreach ($data['predmetKatedryFullInfo'] as $predmet) {
             insertPredmet($pdo, $predmet['zkratka'], $predmet['nazev'], $predmet['cviciciUcitIdno'], $predmet['seminariciUcitIdno'], $predmet['prednasejiciUcitIdno'], $predmet['vyucovaciJazyky'], $predmet['rok'], $idPracoviste);
         }
+    } catch (Exception $e) {
+        safeEcho("Chyba pri nacitani predmetu ze STAGu: " . $e->getMessage());
     }
 }
 

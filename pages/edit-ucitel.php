@@ -1,6 +1,7 @@
 <?php
 require_once '../includes/dbh.inc.php';
 require_once '../includes/functions.php';
+require_once '../includes/workload-functions.php';
 
 $pdo = connectToDatabase();
 
@@ -105,6 +106,8 @@ function saveUcitelDetail(PDO $pdo, int $idUcitel, array $data): void
             }
         }
 
+        saveTeacherWorkloadProfile($pdo, $idUcitel, $idVerze, $data);
+
         $pdo->commit();
     } catch (Throwable $e) {
         if ($pdo->inTransaction()) {
@@ -131,6 +134,9 @@ $teacher = getUcitelDetail($pdo, $idUcitel);
 if (!$teacher) {
     exit('Učitel nebyl nalezen v aktuální verzi.');
 }
+$teacher = array_merge($teacher, getTeacherWorkloadProfile($pdo, $idUcitel, (int)$teacher['IdVerze']));
+$workload = calculateTeacherWorkload($pdo, $idUcitel, (int)$teacher['IdVerze']);
+$fullTimePoints = getWorkloadFullTimePoints($pdo, (int)$teacher['IdVerze']);
 ?>
 <!DOCTYPE html>
 <html lang="cs">
@@ -228,6 +234,41 @@ if (!$teacher) {
             font-size: 13px;
             margin-bottom: 20px;
         }
+
+        .workload-summary {
+            max-width: 700px;
+            margin-bottom: 20px;
+            padding: 14px;
+            border: 1px solid #cfd8dc;
+            border-radius: 8px;
+            background: #f7fafb;
+        }
+
+        .workload-summary strong {
+            font-size: 18px;
+        }
+
+        .workload-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .checkbox-row label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-row input {
+            width: auto;
+        }
+
+        .section-title {
+            margin-top: 28px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
@@ -238,6 +279,20 @@ if (!$teacher) {
         ID učitele: <?= (int)$teacher['id_ucitel'] ?> |
         Učit IDNO: <?= h2($teacher['ucitIdno'] ?? '') ?> |
         Verze: <?= (int)$teacher['IdVerze'] ?>
+    </div>
+
+    <div class="workload-summary">
+        <strong>
+            Aktuální vytíženost:
+            <?= h2(number_format($workload['total'], 2, ',', ' ')) ?> /
+            <?= h2(number_format($workload['capacity'], 0, ',', ' ')) ?> PB
+            (<?= $workload['percent'] === null ? 'bez kapacity' : h2(number_format($workload['percent'], 1, ',', ' ') . ' %') ?>)
+        </strong>
+        <div>
+            A.1 <?= h2(number_format($workload['a1'], 2, ',', ' ')) ?> PB ·
+            A.2 <?= h2(number_format($workload['a2'], 2, ',', ' ')) ?> PB ·
+            ostatní <?= h2(number_format($workload['a3'] + $workload['b'] + $workload['c'] + $workload['d'], 2, ',', ' ')) ?> PB
+        </div>
     </div>
 
     <?php if ($message !== ''): ?>
@@ -282,6 +337,59 @@ if (!$teacher) {
         <div class="row">
             <label for="poznamka">Poznámka</label>
             <textarea id="poznamka" name="poznamka"><?= h2($teacher['poznamka'] ?? '') ?></textarea>
+        </div>
+
+        <h2 class="section-title">Pracovní úvazek</h2>
+
+        <div class="workload-grid">
+            <div class="row">
+                <label for="uvazek">Velikost úvazku</label>
+                <input type="number" id="uvazek" name="uvazek" min="0" max="2" step="0.01"
+                       value="<?= h2($teacher['uvazek'] ?? 1) ?>">
+                <small>1,00 odpovídá kapacitě <?= h2(number_format($fullTimePoints, 0, ',', ' ')) ?> PB.</small>
+            </div>
+
+            <div class="row">
+                <label for="pozice">Pozice</label>
+                <input type="text" id="pozice" name="pozice" value="<?= h2($teacher['pozice'] ?? '') ?>">
+            </div>
+
+            <div class="row">
+                <label for="nastup">Datum nástupu</label>
+                <input type="date" id="nastup" name="nastup" value="<?= h2($teacher['nastup'] ?? '') ?>">
+            </div>
+
+            <div class="row checkbox-row">
+                <label for="vyjimka">
+                    <input type="checkbox" id="vyjimka" name="vyjimka" value="1" <?= !empty($teacher['vyjimka']) ? 'checked' : '' ?>>
+                    Výjimka v posledních 3 letech
+                </label>
+            </div>
+        </div>
+
+        <h3>Souhrnné body činností neevidovaných po položkách</h3>
+        <div class="workload-grid">
+            <div class="row">
+                <label for="pb_a3">A.3 – ostatní pedagogická činnost</label>
+                <input type="number" id="pb_a3" name="pb_a3" min="0" step="0.01" value="<?= h2($teacher['pb_a3'] ?? 0) ?>">
+            </div>
+            <div class="row">
+                <label for="pb_b">B – tvůrčí činnost</label>
+                <input type="number" id="pb_b" name="pb_b" min="0" step="0.01" value="<?= h2($teacher['pb_b'] ?? 0) ?>">
+            </div>
+            <div class="row">
+                <label for="pb_c">C – administrativní činnost</label>
+                <input type="number" id="pb_c" name="pb_c" min="0" step="0.01" value="<?= h2($teacher['pb_c'] ?? 0) ?>">
+            </div>
+            <div class="row">
+                <label for="pb_d">D – další činnost</label>
+                <input type="number" id="pb_d" name="pb_d" min="0" step="0.01" value="<?= h2($teacher['pb_d'] ?? 0) ?>">
+            </div>
+        </div>
+
+        <div class="row">
+            <label for="uvazek_poznamka">Poznámka k úvazku</label>
+            <textarea id="uvazek_poznamka" name="uvazek_poznamka"><?= h2($teacher['uvazek_poznamka'] ?? '') ?></textarea>
         </div>
 
         <div class="actions">
