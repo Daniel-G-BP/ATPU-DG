@@ -5,6 +5,12 @@ services:
     build: .
     ports:
       - "8080:80"
+    environment:
+      DB_HOST: db
+      DB_NAME: atpu
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_CHARSET: utf8mb4
     volumes:
       - .:/var/www/html
     depends_on:

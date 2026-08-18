@@ -175,7 +175,7 @@ $whereSql = 'WHERE ' . implode(' AND ', $where);
 $countSql = "
     SELECT COUNT(*)
     FROM predmet p
-    JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid
+    JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid AND upp.IdVerze = p.IdVerze
     JOIN pracoviste pr ON p.idPracoviste = pr.idpracoviste AND pr.IdVerze = p.IdVerze
     LEFT JOIN teachers t ON upp.teacherid = t.id AND t.IdVerze = upp.IdVerze
     LEFT JOIN jazyk j ON upp.jazyk = j.id
@@ -216,7 +216,7 @@ $sql = "
         upp.max_pocet_studentu,
         upp.teacherid
     FROM predmet p
-    JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid
+    JOIN ucitelpredmetprirazeni upp ON p.id = upp.predmetid AND upp.IdVerze = p.IdVerze
     JOIN pracoviste pr ON p.idPracoviste = pr.idpracoviste AND pr.IdVerze = p.IdVerze
     LEFT JOIN teachers t ON upp.teacherid = t.id AND t.IdVerze = upp.IdVerze
     LEFT JOIN jazyk j ON upp.jazyk = j.id

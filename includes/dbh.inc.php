@@ -1,25 +1,19 @@
 <?php
-include_once "config.php";
+function atpuDatabaseConfigValue(string $envName, string $default): string {
+    $value = getenv($envName);
+    if ($value !== false && $value !== '') {
+        return (string)$value;
+    }
 
-// function connectToDatabase() {
-//     global $servername, $userDb, $passwordDB, $database;
-
-//     try {
-//         $pdo = new PDO("mysql:host=$servername;dbname=$database", $userDb, $passwordDB);
-//         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-//         return $pdo;
-//     } catch (PDOException $e) {
-//         echo "Connection failed: " . $e->getMessage();
-//         exit(); // exit script if connection fails
-//     }
-// }
+    return $default;
+}
 
 function connectToDatabase() {
-    $host = 'db';             
-    $db   = 'atpu';           
-    $user = 'user';           
-    $pass = 'password';       
-    $charset = 'utf8mb4';
+    $host = atpuDatabaseConfigValue('DB_HOST', 'db');
+    $db   = atpuDatabaseConfigValue('DB_NAME', 'atpu');
+    $user = atpuDatabaseConfigValue('DB_USER', 'user');
+    $pass = atpuDatabaseConfigValue('DB_PASSWORD', 'password');
+    $charset = atpuDatabaseConfigValue('DB_CHARSET', 'utf8mb4');
 
     $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 
@@ -39,6 +33,3 @@ function connectToDatabase() {
         die("Připojení k databázi selhalo: " . $e->getMessage());
     }
 }
-
-
-?>

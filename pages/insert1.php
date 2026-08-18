@@ -147,6 +147,96 @@ startAppSession();
         .credentials-section input[type=password] {
             min-width: 210px;
         }
+        .import-status-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.82);
+        }
+        .import-status-overlay[hidden] {
+            display: none;
+        }
+        .import-status-box {
+            width: min(520px, calc(100vw - 32px));
+            background: #fff;
+            border: 1px solid #b8cee6;
+            border-left: 5px solid #2f74b5;
+            border-radius: 6px;
+            box-shadow: 0 12px 32px rgba(20, 45, 75, 0.16);
+            padding: 22px 24px;
+        }
+        .import-status-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+        .import-status-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #d6e4f2;
+            border-top-color: #2f74b5;
+            border-radius: 50%;
+            animation: import-spin 0.8s linear infinite;
+            flex: 0 0 auto;
+        }
+        .import-status-title {
+            margin: 0;
+            color: #1a3a5c;
+            font-size: 1rem;
+        }
+        .import-status-detail,
+        .import-status-logline,
+        .import-status-time {
+            margin: 6px 0 0 36px;
+            color: #444;
+            font-size: 0.9rem;
+        }
+        .import-status-logline {
+            background: #f6f8fa;
+            border: 1px solid #d8dee4;
+            border-radius: 4px;
+            color: #24292f;
+            font-family: Consolas, "Courier New", monospace;
+            min-height: 20px;
+            padding: 8px 10px;
+            white-space: pre-wrap;
+        }
+        .import-log-summary {
+            background: #f6f8fa;
+            border: 1px solid #d0d7de;
+            border-left: 4px solid #57606a;
+            border-radius: 4px;
+            margin: 14px 0;
+            padding: 12px 14px;
+        }
+        .import-log-summary h3 {
+            margin: 0 0 8px 0;
+            font-size: 0.95rem;
+            color: #24292f;
+        }
+        .import-log-summary pre {
+            background: #fff;
+            border: 1px solid #d8dee4;
+            border-radius: 4px;
+            color: #24292f;
+            font-size: 0.82rem;
+            margin: 8px 0;
+            max-height: 220px;
+            overflow: auto;
+            padding: 10px;
+            white-space: pre-wrap;
+        }
+        .import-log-summary a {
+            color: #0969da;
+            font-weight: 600;
+        }
+        @keyframes import-spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 
@@ -160,6 +250,40 @@ startAppSession();
 
         $pdo = connectToDatabase();
 
+        function currentAcademicYearStartForImportPage(): int {
+            $month = (int)date('n');
+            $year = (int)date('Y');
+            return $month >= 9 ? $year : $year - 1;
+        }
+
+        function renderImportLogSummary(array $logInfo): void {
+            if (empty($logInfo['path'])) {
+                return;
+            }
+
+            $filename = basename((string)$logInfo['path']);
+            $href = '../logs/importy/' . rawurlencode($filename);
+            $tail = $logInfo['tail'] ?? [];
+
+            echo "<div class='import-log-summary'>";
+            echo "<h3>Poslednich 10 radku importu</h3>";
+            if (!empty($tail)) {
+                echo "<pre>" . h(implode(PHP_EOL, $tail)) . "</pre>";
+            } else {
+                echo "<p class='hint'>Import nevytvoril zadny textovy vystup.</p>";
+            }
+            echo "<p>Celý log: <a href='" . h($href) . "' target='_blank' rel='noopener'>" . h($filename) . "</a></p>";
+            echo "</div>";
+        }
+
+        function currentImportLogTokenForImportPage(): ?string {
+            return atpuNormalizeImportLogToken($_POST['import_log_token'] ?? null);
+        }
+
+        function renderImportProgressTokenInput(): void {
+            echo '<input type="hidden" name="import_log_token" value="' . h(atpuCreateImportLogToken()) . '">';
+        }
+
         if (isset($_POST['save_stag_credentials'])) {
             $stagUsername = trim($_POST['stag_username'] ?? '');
             $stagPassword = (string)($_POST['stag_password'] ?? '');
@@ -167,8 +291,15 @@ startAppSession();
             if ($stagUsername === '' || $stagPassword === '') {
                 echo "<p class='msg-err'>Vyplnte prihlasovaci jmeno i heslo do IS/STAG.</p>";
             } else {
-                saveStagCredentialsToSession($stagUsername, $stagPassword);
-                echo "<p class='msg-ok'>Prihlasovaci udaje do IS/STAG byly ulozeny pouze do serverove session.</p>";
+                try {
+                    saveStagCredentialsToSession($stagUsername, $stagPassword);
+                    assertStagCredentialsAccepted();
+                    markStagCredentialsVerified();
+                    echo "<p class='msg-ok'>Prihlasovaci udaje byly overeny proti IS/STAG a ulozeny pouze do serverove session.</p>";
+                } catch (Throwable $e) {
+                    clearStagCredentialsFromSession();
+                    echo "<p class='msg-err'>Prihlasovaci udaje se nepodarilo overit proti IS/STAG: " . h($e->getMessage()) . "</p>";
+                }
             }
         }
 
@@ -197,6 +328,13 @@ startAppSession();
             ");
             $stmt->execute([$newVerzeId]);
 
+            $stmt = $pdo->prepare("
+                UPDATE nastaveni
+                SET Hodnota = ?
+                WHERE Nazev = 'AktivniRok' AND IdVerze = ?
+            ");
+            $stmt->execute([currentAcademicYearStartForImportPage(), $newVerzeId]);
+
             $stmt = $pdo->prepare("UPDATE nastaveni SET Hodnota = ? WHERE Nazev = 'AktivniVerze'");
             $stmt->execute([$newVerzeId]);
 
@@ -221,14 +359,19 @@ startAppSession();
             if (!hasStagCredentials()) {
                 echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
             } else {
+                $fakulta = $_POST['fakulta'];
+                atpuStartImportLog('nacist-fakultu-' . $fakulta, getAktivniVerze($pdo), currentImportLogTokenForImportPage());
                 try {
                     assertStagCredentialsValid();
-                    $fakulta = $_POST['fakulta'];
                     getKatedry($pdo, $fakulta);
                     getStudijniProgram($pdo, $fakulta);
+                    $logInfo = atpuFinishImportLog('Zakladni data fakulty ' . $fakulta . ' nactena.');
                     echo "<p class='msg-ok'>✔ Základní data fakulty <strong>" . h($fakulta) . "</strong> načtena (katedry a studijní programy).</p>";
+                    renderImportLogSummary($logInfo);
                 } catch (Throwable $e) {
+                    $logInfo = atpuFinishImportLog('CHYBA: ' . $e->getMessage());
                     echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                    renderImportLogSummary($logInfo);
                 }
             }
         }
@@ -237,13 +380,18 @@ startAppSession();
             if (!hasStagCredentials()) {
                 echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
             } else {
+                $katedra = $_POST['katedra'];
+                atpuStartImportLog('import-katedra-' . $katedra, getAktivniVerze($pdo), currentImportLogTokenForImportPage());
                 try {
                     assertStagCredentialsValid();
-                    $katedra = $_POST['katedra'];
                     importJednuKatedruSeVsim($pdo, $katedra);
+                    $logInfo = atpuFinishImportLog('Import katedry ' . $katedra . ' dokoncen.');
                     echo "<p class='msg-ok'>✔ Data katedry <strong>" . h($katedra) . "</strong> byla úspěšně naimportována a přiřazení učitelů provedeno.</p>";
+                    renderImportLogSummary($logInfo);
                 } catch (Throwable $e) {
+                    $logInfo = atpuFinishImportLog('CHYBA: ' . $e->getMessage());
                     echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                    renderImportLogSummary($logInfo);
                 }
             }
         }
@@ -252,12 +400,17 @@ startAppSession();
             if (!hasStagCredentials()) {
                 echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
             } else {
+                atpuStartImportLog('import-vsechny-katedry', getAktivniVerze($pdo), currentImportLogTokenForImportPage());
                 try {
                     assertStagCredentialsValid();
                     insertAllKatedry($pdo);
+                    $logInfo = atpuFinishImportLog('Import vsech ulozenych kateder dokoncen.');
                     echo "<p class='msg-ok'>✔ Data všech uložených kateder byla naimportována.</p>";
+                    renderImportLogSummary($logInfo);
                 } catch (Throwable $e) {
+                    $logInfo = atpuFinishImportLog('CHYBA: ' . $e->getMessage());
                     echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                    renderImportLogSummary($logInfo);
                 }
             }
         }
@@ -266,12 +419,17 @@ startAppSession();
             if (!hasStagCredentials()) {
                 echo "<p class='msg-err'>Pred importem nejdrive zadejte prihlasovaci udaje do IS/STAG.</p>";
             } else {
+                atpuStartImportLog('kompletni-import-utb', getAktivniVerze($pdo), currentImportLogTokenForImportPage());
                 try {
                     assertStagCredentialsValid();
                     importAllFakultyAKatedry($pdo);
+                    $logInfo = atpuFinishImportLog('Kompletni import vsech fakult dokoncen.');
                     echo "<p class='msg-ok'>✔ Kompletní import všech fakult dokončen.</p>";
+                    renderImportLogSummary($logInfo);
                 } catch (Throwable $e) {
+                    $logInfo = atpuFinishImportLog('CHYBA: ' . $e->getMessage());
                     echo "<p class='msg-err'>" . h($e->getMessage()) . "</p>";
+                    renderImportLogSummary($logInfo);
                 }
             }
         }
@@ -288,8 +446,11 @@ startAppSession();
         }
 
         if (isset($_POST['repopulate_zkouseni'])) {
+            atpuStartImportLog('predvyplnit-zkouseni', getAktivniVerze($pdo), currentImportLogTokenForImportPage());
             autoPopulateZkouseniPrirazeni($pdo);
+            $logInfo = atpuFinishImportLog('Predvyplneni zkouseni_prirazeni dokonceno.');
             echo "<p class='msg-ok'>✔ Tabulka zkouseni_prirazeni byla předvyplněna.</p>";
+            renderImportLogSummary($logInfo);
         }
 
         // ── Načtení nastavení ZahrnoutAJ ────────────────────────────────────
@@ -311,15 +472,17 @@ startAppSession();
 
         // ── Načtení aktuálního roku ──────────────────────────────────────────
         $currentRok = '';
+        $currentRokValue = (int)getYear($pdo);
         $stmt = $pdo->prepare("
-            SELECT r.akademickyrok FROM nastaveni n
+            SELECT r.rok, r.akademickyrok FROM nastaveni n
             JOIN roky r ON n.Hodnota = r.rok
             WHERE n.Nazev = 'AktivniRok' AND n.IdVerze = ?
             LIMIT 1
         ");
         $stmt->execute([$currentVersion]);
-        if ($r = $stmt->fetchColumn()) {
-            $currentRok = $r;
+        if ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $currentRokValue = (int)$r['rok'];
+            $currentRok = $r['akademickyrok'];
         }
         ?>
 
@@ -332,6 +495,9 @@ startAppSession();
                 <p>
                     Udaje jsou ulozeny pouze v serverove session pro aktualni praci s importem.
                     Aktivni uzivatel: <strong><?= h($stagCredentials['username']) ?></strong>.
+                    <?php if (!empty($stagCredentials['verified_at'])): ?>
+                        Overeno proti IS/STAG: <strong><?= h(date('d.m.Y H:i', (int)$stagCredentials['verified_at'])) ?></strong>.
+                    <?php endif; ?>
                     Heslo se neuklada do databaze, do docker-compose.yml ani do repozitare.
                 </p>
                 <form method="post">
@@ -342,7 +508,7 @@ startAppSession();
                     Pred importem zadejte vlastni udaje do IS/STAG. Server je pouzije pro volani STAG webovych sluzeb
                     a uchova je jen v session do ukonceni prace nebo rucniho odstraneni.
                 </p>
-                <form method="post" autocomplete="off">
+                <form method="post" autocomplete="off" data-progress-message="Overuji prihlasovaci udaje proti IS/STAG...">
                     <input type="text" name="stag_username" placeholder="STAG prihlasovaci jmeno" autocomplete="username" required>
                     <input type="password" name="stag_password" placeholder="STAG heslo" autocomplete="current-password" required>
                     <input type="submit" name="save_stag_credentials" value="Ulozit do session">
@@ -365,17 +531,17 @@ startAppSession();
         <div class="import-step">
             <h3>Vytvořit novou verzi dat</h3>
             <p class="hint">Každý import probíhá v rámci verze. Vytvořte novou verzi pro nový akademický rok nebo pro oddělení různých importů. Nová verze bude automaticky nastavena jako aktivní.</p>
-            <form method="post">
-                <input type="text" name="verze_nazev" placeholder="Název verze (např. 2025/2026)" style="width:220px;" required>
-                <input type="submit" name="create_version" value="Vytvořit verzi">
-            </form>
+                <form method="post" data-progress-message="Vytvarim novou verzi dat...">
+                    <input type="text" name="verze_nazev" placeholder="Název verze (např. 2025/2026)" style="width:220px;" required>
+                    <input type="submit" name="create_version" value="Vytvořit verzi">
+                </form>
         </div>
 
         <div class="import-step">
             <h3>Přepnout na existující verzi</h3>
             <p class="hint">Pokud máte více verzí, zde vyberete, se kterou chcete pracovat. Změna verze ovlivní zobrazení dat v celé aplikaci.</p>
-            <form method="post">
-                <select name="verze">
+                <form method="post" data-progress-message="Prepinam aktivni verzi...">
+                    <select name="verze">
                     <option value="">Vyberte verzi...</option>
                     <?php
                     $stmt = $pdo->query("SELECT IdVerze, Nazev, Datum FROM verze ORDER BY Datum DESC, IdVerze DESC");
@@ -397,13 +563,14 @@ startAppSession();
         <div class="import-step">
             <h3>Vyberte akademický rok pro import</h3>
             <p class="hint">Tento rok se použije při stahování předmětů ze STAGu. Vyberte rok, pro který chcete sestavit úvazky (aktuální rok). Data loňského roku se načtou automaticky pro přiřazení učitelů.</p>
-            <form method="post">
+            <form method="post" data-progress-message="Ukladam akademicky rok...">
                 <select name="rok">
                     <option value="">Vyberte rok...</option>
                     <?php
                     $stmt = $pdo->query("SELECT rok, akademickyrok FROM roky ORDER BY rok DESC");
                     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $rok) {
-                        echo "<option value='" . h($rok['rok']) . "'>" . h($rok['akademickyrok']) . "</option>";
+                        $sel = ((int)$rok['rok'] === $currentRokValue) ? 'selected' : '';
+                        echo "<option value='" . h($rok['rok']) . "' $sel>" . h($rok['akademickyrok']) . "</option>";
                     }
                     ?>
                 </select>
@@ -430,6 +597,7 @@ startAppSession();
                     }
                     ?>
                 </select>
+                <?php renderImportProgressTokenInput(); ?>
                 <input type="submit" name="load_fakulta" value="Načíst katedry a programy">
             </form>
         </div>
@@ -463,6 +631,7 @@ startAppSession();
                     }
                     ?>
                 </select>
+                <?php renderImportProgressTokenInput(); ?>
                 <input type="submit" name="import_katedra" value="Importovat katedru"
                     onclick="return confirm('Importovat data katedry? Stávající přiřazení budou přepočítána.');">
             </form>
@@ -479,6 +648,7 @@ startAppSession();
                 <h3>Importovat data všech načtených kateder najednou</h3>
                 <p class="hint">Provede import dat pro každou katedru uloženou v databázi. Může trvat několik minut.</p>
                 <form method="post">
+                    <?php renderImportProgressTokenInput(); ?>
                     <input type="submit" name="import_all_katedry" value="Importovat všechny katedry"
                         onclick="return confirm('Spustit import dat pro všechny uložené katedry? Akce může trvat několik minut.');">
                 </form>
@@ -488,7 +658,8 @@ startAppSession();
             <div class="advanced-section" style="margin-top:10px;">
                 <h3>Kompletní import celé univerzity (všechny fakulty)</h3>
                 <p class="hint">⚠ Stáhne data pro všechny fakulty UTB (FAI, FAM, FLK, FMK, FHS, FT, IMS) a všechny jejich katedry. Trvá velmi dlouho. Doporučeno pouze pro první inicializaci nebo úplné obnovení dat.</p>
-                <form method="post">
+                <form method="post" data-progress-message="Spoustim kompletni import cele UTB...">
+                    <?php renderImportProgressTokenInput(); ?>
                     <input type="submit" name="import_all_fakulty" value="Spustit kompletní import (celá UTB)"
                         onclick="return confirm('Spustit kompletní import celé UTB? Akce trvá velmi dlouho a přepíše stávající data.');">
                 </form>
@@ -502,7 +673,8 @@ startAppSession();
                     Stávající manuálně upravené záznamy v zkouseni_prirazeni <strong>zůstanou zachovány</strong>
                     (ON DUPLICATE KEY UPDATE ignoruje existující řádky).
                 </p>
-                <form method="post">
+                <form method="post" data-progress-message="Predvyplnuji zkouseni z aktualnich dat...">
+                    <?php renderImportProgressTokenInput(); ?>
                     <input type="submit" name="repopulate_zkouseni" value="Předvyplnit zkouseni_prirazeni"
                         onclick="return confirm('Spustit předvyplnění tabulky zkouseni_prirazeni?');">
                 </form>
@@ -551,5 +723,71 @@ startAppSession();
         </div>
 
     </div>
+    <div id="import-status" class="import-status-overlay" hidden>
+        <div class="import-status-box" role="status" aria-live="polite">
+            <div class="import-status-header">
+                <div class="import-status-spinner" aria-hidden="true"></div>
+                <h2 class="import-status-title" id="import-status-title">Pracuji...</h2>
+            </div>
+            <p class="import-status-detail" id="import-status-detail">Pozadavek byl odeslan, cekam na odpoved serveru.</p>
+            <p class="import-status-logline" id="import-status-logline">Cekam na prvni radek logu...</p>
+            <p class="import-status-time" id="import-status-time">Cas behu: 0 s</p>
+        </div>
+    </div>
+    <script>
+        (function () {
+            var overlay = document.getElementById('import-status');
+            var title = document.getElementById('import-status-title');
+            var detail = document.getElementById('import-status-detail');
+            var logline = document.getElementById('import-status-logline');
+            var time = document.getElementById('import-status-time');
+            var details = [
+                'Overuji spojeni a pripravuji pozadavek.',
+                'Import muze trvat dele podle dostupnosti STAGu.',
+                'Stranku nezavirejte, vysledek se zobrazi po dokonceni akce.'
+            ];
+
+            document.querySelectorAll('form[data-progress-message]').forEach(function (form) {
+                form.addEventListener('submit', function () {
+                    var started = Date.now();
+                    var detailIndex = 0;
+                    var tokenInput = form.querySelector('input[name="import_log_token"]');
+                    var logToken = tokenInput ? tokenInput.value : '';
+                    title.textContent = form.getAttribute('data-progress-message') || 'Pracuji...';
+                    detail.textContent = details[detailIndex];
+                    logline.textContent = logToken ? 'Cekam na prvni radek logu...' : 'Pro tuto akci neni prubezny log dostupny.';
+                    time.textContent = 'Cas behu: 0 s';
+                    overlay.hidden = false;
+
+                    window.setInterval(function () {
+                        var seconds = Math.floor((Date.now() - started) / 1000);
+                        time.textContent = 'Cas behu: ' + seconds + ' s';
+                        if (seconds > 0 && seconds % 7 === 0) {
+                            detailIndex = (detailIndex + 1) % details.length;
+                            detail.textContent = details[detailIndex];
+                        }
+                    }, 1000);
+
+                    if (logToken) {
+                        window.setInterval(function () {
+                            fetch('import-log-tail.php?token=' + encodeURIComponent(logToken), {
+                                cache: 'no-store',
+                                credentials: 'same-origin'
+                            })
+                                .then(function (response) { return response.json(); })
+                                .then(function (data) {
+                                    if (data && data.lastLine) {
+                                        logline.textContent = data.lastLine;
+                                    }
+                                })
+                                .catch(function () {
+                                    logline.textContent = 'Log zatim nelze precist, import muze stale bezet.';
+                                });
+                        }, 1500);
+                    }
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

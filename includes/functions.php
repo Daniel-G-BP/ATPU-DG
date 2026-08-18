@@ -15,7 +15,127 @@ function h($text) {
 }
 
 function safeEcho($message) {
+    if (!empty($GLOBALS['atpu_import_log_path'])) {
+        atpuAppendImportLog((string)$message);
+        return;
+    }
+
     echo nl2br(h($message) . "\n");
+}
+
+function atpuImportLogDirectory(): string {
+    return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'logs' . DIRECTORY_SEPARATOR . 'importy';
+}
+
+function atpuNormalizeImportLogToken(?string $token): ?string {
+    if ($token === null) {
+        return null;
+    }
+
+    $token = strtolower(trim($token));
+    return preg_match('/^[a-f0-9]{32}$/', $token) ? $token : null;
+}
+
+function atpuCreateImportLogToken(): string {
+    return bin2hex(random_bytes(16));
+}
+
+function atpuFindImportLogByToken(string $token): ?string {
+    $token = atpuNormalizeImportLogToken($token);
+    if ($token === null) {
+        return null;
+    }
+
+    $matches = glob(atpuImportLogDirectory() . DIRECTORY_SEPARATOR . '*' . $token . '*.log');
+    if (!$matches) {
+        return null;
+    }
+
+    usort($matches, static fn($a, $b) => filemtime($b) <=> filemtime($a));
+    return $matches[0];
+}
+
+function atpuReadLastLogLines(string $path, int $limit = 10): array {
+    if (!is_file($path) || !is_readable($path)) {
+        return [];
+    }
+
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    if ($lines === false) {
+        return [];
+    }
+
+    return array_slice($lines, -max(1, $limit));
+}
+
+function atpuStartImportLog(string $action, ?int $idVerze = null, ?string $token = null): string {
+    $dir = atpuImportLogDirectory();
+    if (!is_dir($dir)) {
+        mkdir($dir, 0775, true);
+    }
+
+    $slug = strtolower(trim(preg_replace('/[^a-zA-Z0-9]+/', '-', $action), '-'));
+    if ($slug === '') {
+        $slug = 'import';
+    }
+
+    $versionPart = $idVerze !== null ? 'verze' . $idVerze : 'verze';
+    $tokenPart = atpuNormalizeImportLogToken($token);
+    $tokenSuffix = $tokenPart !== null ? '-' . $tokenPart : '';
+    $path = $dir . DIRECTORY_SEPARATOR . date('Ymd-His') . '-' . $versionPart . '-' . $slug . $tokenSuffix . '.log';
+    $header = [
+        'ATPU import log',
+        'Akce: ' . $action,
+        'Zacatek: ' . date('Y-m-d H:i:s'),
+        str_repeat('-', 60),
+    ];
+
+    file_put_contents($path, implode(PHP_EOL, $header) . PHP_EOL, LOCK_EX);
+
+    $GLOBALS['atpu_import_log_path'] = $path;
+    $GLOBALS['atpu_import_log_tail'] = [];
+
+    return $path;
+}
+
+function atpuAppendImportLog(string $message): void {
+    $path = $GLOBALS['atpu_import_log_path'] ?? null;
+    if (!$path) {
+        return;
+    }
+
+    $lines = preg_split('/\R/', $message);
+    foreach ($lines as $line) {
+        $line = trim((string)$line);
+        if ($line === '') {
+            continue;
+        }
+
+        $record = '[' . date('H:i:s') . '] ' . $line;
+        file_put_contents($path, $record . PHP_EOL, FILE_APPEND | LOCK_EX);
+
+        if (!isset($GLOBALS['atpu_import_log_tail']) || !is_array($GLOBALS['atpu_import_log_tail'])) {
+            $GLOBALS['atpu_import_log_tail'] = [];
+        }
+        $GLOBALS['atpu_import_log_tail'][] = $record;
+        $GLOBALS['atpu_import_log_tail'] = array_slice($GLOBALS['atpu_import_log_tail'], -10);
+    }
+}
+
+function atpuFinishImportLog(?string $message = null): array {
+    $path = $GLOBALS['atpu_import_log_path'] ?? null;
+    if ($path && $message !== null && trim($message) !== '') {
+        atpuAppendImportLog($message);
+    }
+
+    $tail = $path ? atpuReadLastLogLines($path, 10) : [];
+
+    unset($GLOBALS['atpu_import_log_path'], $GLOBALS['atpu_import_log_tail']);
+
+    return [
+        'path' => $path,
+        'tail' => $tail,
+    ];
 }
 
 function startAppSession(): void {
@@ -68,11 +188,20 @@ function getStagCredentialsFromSession(): ?array {
         'username' => $username,
         'password' => $password,
         'saved_at' => $credentials['saved_at'] ?? null,
+        'verified_at' => $credentials['verified_at'] ?? null,
     ];
 }
 
 function hasStagCredentials(): bool {
     return getStagCredentialsFromSession() !== null;
+}
+
+function markStagCredentialsVerified(): void {
+    startAppSession();
+
+    if (isset($_SESSION['stag_credentials']) && is_array($_SESSION['stag_credentials'])) {
+        $_SESSION['stag_credentials']['verified_at'] = time();
+    }
 }
 
 function stagRequestContext(?array $credentials = null) {
@@ -129,6 +258,9 @@ function stagReadUrl(string $url, $context): array {
     if ($response === false) {
         $err = error_get_last();
         $error = $err['message'] ?? 'neznamy problem spojeni';
+        if (stripos($error, 'Connection refused') !== false) {
+            $error .= ' | Spojeni na stag-ws.utb.cz:443 bylo odmitnuto. Nejde o spatne heslo, ale o sitovou dostupnost STAG webovych sluzeb z prostredi, kde bezi PHP/Docker.';
+        }
     }
 
     return [
@@ -183,6 +315,36 @@ function assertStagCredentialsValid(): void {
     $data = json_decode($response, true);
     if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
         throw new Exception('STAG vratil neocekavanou odpoved pri testu prihlaseni: ' . json_last_error_msg());
+    }
+}
+
+function assertStagCredentialsAccepted(): void {
+    if (!hasStagCredentials()) {
+        throw new Exception('Pred kontrolou zadejte prihlasovaci udaje do IS/STAG.');
+    }
+
+    $url = 'https://stag-ws.utb.cz/ws/services/rest2/ciselniky/getSeznamPracovist'
+        . '?typPracoviste=%25&zkratka=%25&nadrazenePracoviste=%25&outputFormat=JSON';
+
+    $result = stagReadUrl($url, stagAuthContext());
+    $response = $result['response'];
+    $status = $result['status'];
+
+    if ($response === false) {
+        throw new Exception('test spojeni selhal: ' . ($result['error'] ?? 'neznamy problem spojeni'));
+    }
+
+    if (stagLooksUnauthorized($status, $response)) {
+        throw new Exception('STAG odmitl zadane prihlasovaci udaje.');
+    }
+
+    if ($status !== null && $status >= 400) {
+        throw new Exception('STAG vratil HTTP ' . $status . ' pri kontrole prihlaseni.');
+    }
+
+    $data = json_decode($response, true);
+    if ($data === null && json_last_error() !== JSON_ERROR_NONE) {
+        throw new Exception('STAG vratil neocekavanou odpoved pri kontrole prihlaseni: ' . json_last_error_msg());
     }
 }
 

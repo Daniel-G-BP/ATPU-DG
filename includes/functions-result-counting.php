@@ -73,9 +73,12 @@ function redirectBack(array $extra = []): void
 function loadAssignment(PDO $pdo, int $id, int $idVerze): ?array
 {
     $stmt = $pdo->prepare("
-        SELECT *
-        FROM ucitelpredmetprirazeni
-        WHERE id = ? AND IdVerze = ?
+        SELECT upp.*
+        FROM ucitelpredmetprirazeni upp
+        JOIN predmet p
+          ON p.id = upp.predmetid
+         AND p.IdVerze = upp.IdVerze
+        WHERE upp.id = ? AND upp.IdVerze = ?
         LIMIT 1
     ");
     $stmt->execute([$id, $idVerze]);
