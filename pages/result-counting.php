@@ -517,7 +517,39 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
         .bulk-save-wrap {
             margin: 18px 0;
             display: flex;
-            justify-content: flex-end;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .bulk-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 10px 12px;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            background: #f7fafb;
+        }
+
+        .bulk-actions label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: .9em;
+            margin-right: 8px;
+        }
+
+        .bulk-actions .small-muted {
+            margin-right: 8px;
+        }
+
+        .row-select-cell,
+        .row-select-head {
+            width: 34px;
+            text-align: center;
         }
 
         .editable-table select,
@@ -632,6 +664,16 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
         <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
                     padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
             ✔ Učitel byl odebrán ze záznamu.
+        </div>
+    <?php elseif (isset($_GET['bulk_cleared'])): ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Hromadně odebráno učitelů ze záznamů: <?= (int)$_GET['bulk_cleared'] ?>.
+        </div>
+    <?php elseif (isset($_GET['bulk_deleted'])): ?>
+        <div style="background:#d4edda; border:1px solid #28a745; border-radius:6px;
+                    padding:8px 16px; margin-bottom:14px; font-size:.92em; color:#155724;">
+            ✔ Hromadně smazáno záznamů: <?= (int)$_GET['bulk_deleted'] ?>.
         </div>
     <?php endif; ?>
 
@@ -799,6 +841,31 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
         <?php endif; ?>
 
         <div class="bulk-save-wrap">
+            <div class="bulk-actions">
+                <label>
+                    <input type="checkbox" id="select-visible-assignments">
+                    Vybrat vše na stránce
+                </label>
+                <span class="small-muted">
+                    Vyfiltrováno: <strong><?= $totalRecords ?></strong> záznamů
+                </span>
+                <button type="submit" name="action" value="bulk_clear_selected" class="btn-remove"
+                        onclick="return confirmSelectedBulkAction('odebrat učitele z vybraných řádků');">
+                    Odebrat vybrané
+                </button>
+                <button type="submit" name="action" value="bulk_delete_selected" class="btn-delete"
+                        onclick="return confirmSelectedBulkAction('smazat vybrané řádky');">
+                    Smazat vybrané
+                </button>
+                <button type="submit" name="action" value="bulk_clear_filtered" class="btn-remove"
+                        onclick="return confirmFilteredBulkAction('odebrat učitele ze všech vyfiltrovaných záznamů', <?= (int)$totalRecords ?>);">
+                    Odebrat vše vyfiltrované
+                </button>
+                <button type="submit" name="action" value="bulk_delete_filtered" class="btn-delete"
+                        onclick="return confirmFilteredBulkAction('smazat všechny vyfiltrované záznamy', <?= (int)$totalRecords ?>);">
+                    Smazat vše vyfiltrované
+                </button>
+            </div>
             <button type="submit" name="action" value="update_all" class="btn-save-all">Uložit vše na stránce</button>
         </div>
 
@@ -806,6 +873,7 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
         <table class="editable-table">
             <thead>
                 <tr>
+                    <th class="row-select-head"></th>
                     <th><a href="<?= htmlspecialchars(buildSortLink('nazev', $sort, $order)) ?>">Předmět</a></th>
                     <th><a href="<?= htmlspecialchars(buildSortLink('zkratka', $sort, $order)) ?>">Zkratka</a></th>
                     <th><a href="<?= htmlspecialchars(buildSortLink('rok', $sort, $order)) ?>">Rok</a></th>
@@ -823,6 +891,9 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
             <tbody>
                 <?php foreach ($assignments as $row): ?>
                     <tr style="background-color: <?= $barvaPozadi[$row['typ']] ?? '' ?>">
+                        <td class="row-select-cell">
+                            <input type="checkbox" name="selected_ids[]" value="<?= (int)$row['id'] ?>" class="assignment-checkbox">
+                        </td>
                         <td><?= htmlspecialchars($row['nazev']) ?></td>
                         <td><?= htmlspecialchars($row['zkratka']) ?></td>
                         <td><?= htmlspecialchars((string)$row['rok']) ?></td>
@@ -893,7 +964,7 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
 
                 <?php if (empty($assignments)): ?>
                     <tr>
-                        <td colspan="12">Nebyla nalezena žádná data.</td>
+                        <td colspan="13">Nebyla nalezena žádná data.</td>
                     </tr>
                 <?php endif; ?>
             </tbody>
@@ -931,6 +1002,39 @@ $teacherOptionsForJs = array_map(static function (array $teacher): array {
         ) ?>;
         const restrictTeachersToFaculty = <?= $omezitUciteleNaFakultu ? 'true' : 'false' ?>;
         const workloadTeachersById = new Map(workloadTeachers.map((teacher) => [String(teacher.id), teacher]));
+        const selectVisibleAssignments = document.getElementById('select-visible-assignments');
+        const assignmentCheckboxes = Array.from(document.querySelectorAll('.assignment-checkbox'));
+
+        if (selectVisibleAssignments) {
+            selectVisibleAssignments.addEventListener('change', () => {
+                assignmentCheckboxes.forEach((checkbox) => {
+                    checkbox.checked = selectVisibleAssignments.checked;
+                });
+            });
+        }
+
+        function selectedAssignmentCount() {
+            return assignmentCheckboxes.filter((checkbox) => checkbox.checked).length;
+        }
+
+        function confirmSelectedBulkAction(actionLabel) {
+            const count = selectedAssignmentCount();
+            if (count === 0) {
+                alert('Nejprve označte alespoň jeden řádek.');
+                return false;
+            }
+
+            return confirm(`Opravdu chcete ${actionLabel}? Počet označených řádků: ${count}.`);
+        }
+
+        function confirmFilteredBulkAction(actionLabel, count) {
+            if (count <= 0) {
+                alert('Aktuální filtr neobsahuje žádné záznamy.');
+                return false;
+            }
+
+            return confirm(`Opravdu chcete ${actionLabel}? Akce se provede nad všemi záznamy odpovídajícími aktuálnímu filtru, tedy ${count} záznamy. Tato akce se nevztahuje jen na aktuální stránku výpisu.`);
+        }
 
         document.querySelectorAll('.teacher-select').forEach((select) => {
             const preview = select.parentElement.querySelector('.teacher-workload-preview');

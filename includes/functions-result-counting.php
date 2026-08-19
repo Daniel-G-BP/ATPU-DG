@@ -121,6 +121,188 @@ function languageExists(PDO $pdo, ?int $jazykId): bool
     return (bool)$stmt->fetchColumn();
 }
 
+function postString(string $name): string
+{
+    return trim((string)($_POST[$name] ?? ''));
+}
+
+function selectedAssignmentIds(): array
+{
+    $ids = $_POST['selected_ids'] ?? [];
+    if (!is_array($ids)) {
+        return [];
+    }
+
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn($id) => $id > 0)));
+
+    return $ids;
+}
+
+function selectedAssignmentPlaceholders(array $ids): string
+{
+    return implode(', ', array_fill(0, count($ids), '?'));
+}
+
+function buildFilteredAssignmentWhere(PDO $pdo, int $idVerze): array
+{
+    $where = [
+        'upp.IdVerze = ?',
+        'p.IdVerze = ?',
+    ];
+    $params = [$idVerze, $idVerze];
+
+    $katedra = postString('return_katedra');
+    $fakulta = postString('return_fakulta');
+    $nazev = postString('return_nazev');
+    $zkratka = postString('return_zkratka');
+    $ucitel = postString('return_ucitel');
+    $semestr = postString('return_semestr');
+
+    if ($katedra !== '') {
+        $where[] = 'p.idPracoviste = ?';
+        $params[] = (int)$katedra;
+    }
+    if ($fakulta !== '') {
+        $where[] = 'pr.nadrazenepracoviste = ?';
+        $params[] = $fakulta;
+    }
+    if ($nazev !== '') {
+        $where[] = 'p.nazev LIKE ?';
+        $params[] = '%' . $nazev . '%';
+    }
+    if ($zkratka !== '') {
+        $where[] = 'p.zkratka LIKE ?';
+        $params[] = '%' . $zkratka . '%';
+    }
+    if ($ucitel !== '') {
+        if ($ucitel === 'bez') {
+            $where[] = 'upp.teacherid IS NULL';
+        } else {
+            $where[] = 'upp.teacherid = ?';
+            $params[] = (int)$ucitel;
+        }
+    }
+    if ($semestr !== '') {
+        $where[] = 'p.semestr = ?';
+        $params[] = $semestr;
+    }
+    if (!getZahrnoutAJ($pdo)) {
+        $where[] = 'upp.jazyk != 2';
+    }
+
+    return [implode(' AND ', $where), $params];
+}
+
+function countFilteredAssignments(PDO $pdo, int $idVerze): int
+{
+    [$whereSql, $params] = buildFilteredAssignmentWhere($pdo, $idVerze);
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*)
+        FROM ucitelpredmetprirazeni upp
+        JOIN predmet p
+          ON p.id = upp.predmetid
+         AND p.IdVerze = upp.IdVerze
+        JOIN pracoviste pr
+          ON p.idPracoviste = pr.idpracoviste
+         AND pr.IdVerze = p.IdVerze
+        LEFT JOIN teachers t
+          ON upp.teacherid = t.id
+         AND t.IdVerze = upp.IdVerze
+        WHERE $whereSql
+    ");
+    $stmt->execute($params);
+
+    return (int)$stmt->fetchColumn();
+}
+
+function clearSelectedAssignments(PDO $pdo, array $ids, int $idVerze): int
+{
+    if ($ids === []) {
+        return 0;
+    }
+
+    $placeholders = selectedAssignmentPlaceholders($ids);
+    $stmt = $pdo->prepare("
+        UPDATE ucitelpredmetprirazeni upp
+        JOIN predmet p
+          ON p.id = upp.predmetid
+         AND p.IdVerze = upp.IdVerze
+        SET upp.teacherid = NULL,
+            upp.upraveno_rucne = 1
+        WHERE upp.IdVerze = ?
+          AND upp.id IN ($placeholders)
+    ");
+    $stmt->execute(array_merge([$idVerze], $ids));
+
+    return $stmt->rowCount();
+}
+
+function deleteSelectedAssignments(PDO $pdo, array $ids, int $idVerze): int
+{
+    if ($ids === []) {
+        return 0;
+    }
+
+    $placeholders = selectedAssignmentPlaceholders($ids);
+    $stmt = $pdo->prepare("
+        DELETE upp
+        FROM ucitelpredmetprirazeni upp
+        JOIN predmet p
+          ON p.id = upp.predmetid
+         AND p.IdVerze = upp.IdVerze
+        WHERE upp.IdVerze = ?
+          AND upp.id IN ($placeholders)
+    ");
+    $stmt->execute(array_merge([$idVerze], $ids));
+
+    return $stmt->rowCount();
+}
+
+function clearFilteredAssignments(PDO $pdo, int $idVerze): int
+{
+    [$whereSql, $params] = buildFilteredAssignmentWhere($pdo, $idVerze);
+    $stmt = $pdo->prepare("
+        UPDATE ucitelpredmetprirazeni upp
+        JOIN predmet p
+          ON p.id = upp.predmetid
+         AND p.IdVerze = upp.IdVerze
+        JOIN pracoviste pr
+          ON p.idPracoviste = pr.idpracoviste
+         AND pr.IdVerze = p.IdVerze
+        LEFT JOIN teachers t
+          ON upp.teacherid = t.id
+         AND t.IdVerze = upp.IdVerze
+        SET upp.teacherid = NULL,
+            upp.upraveno_rucne = 1
+        WHERE $whereSql
+    ");
+    $stmt->execute($params);
+
+    return $stmt->rowCount();
+}
+
+function deleteFilteredAssignments(PDO $pdo, int $idVerze): int
+{
+    [$whereSql, $params] = buildFilteredAssignmentWhere($pdo, $idVerze);
+    $stmt = $pdo->prepare("
+        DELETE upp
+        FROM ucitelpredmetprirazeni upp
+        JOIN predmet p
+          ON p.id = upp.predmetid
+         AND p.IdVerze = upp.IdVerze
+        JOIN pracoviste pr
+          ON p.idPracoviste = pr.idpracoviste
+         AND pr.IdVerze = p.IdVerze
+        LEFT JOIN teachers t
+          ON upp.teacherid = t.id
+         AND t.IdVerze = upp.IdVerze
+        WHERE $whereSql
+    ");
+    $stmt->execute($params);
+
+    return $stmt->rowCount();
+}
+
 function normalizeValue($value)
 {
     return ($value === '' || $value === null) ? null : $value;
@@ -222,6 +404,26 @@ if (!$idVerze || $action === '') {
 }
 
 try {
+    if ($action === 'bulk_clear_selected') {
+        $affected = clearSelectedAssignments($pdo, selectedAssignmentIds(), $idVerze);
+        redirectBack(['bulk_cleared' => $affected]);
+    }
+
+    if ($action === 'bulk_delete_selected') {
+        $affected = deleteSelectedAssignments($pdo, selectedAssignmentIds(), $idVerze);
+        redirectBack(['bulk_deleted' => $affected]);
+    }
+
+    if ($action === 'bulk_clear_filtered') {
+        $affected = clearFilteredAssignments($pdo, $idVerze);
+        redirectBack(['bulk_cleared' => $affected]);
+    }
+
+    if ($action === 'bulk_delete_filtered') {
+        $affected = deleteFilteredAssignments($pdo, $idVerze);
+        redirectBack(['bulk_deleted' => $affected]);
+    }
+
     if ($action === 'update_all') {
         $pdo->beginTransaction();
 

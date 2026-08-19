@@ -150,6 +150,24 @@ button:hover {
     padding: 20px !important;
 }
 
+.btn-cviceni {
+    display: inline-block;
+    padding: 7px 10px;
+    background-color: #e9f6ef;
+    color: #1d5c3c;
+    border: 1px solid #3c9a69;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.88rem;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+.btn-cviceni:hover {
+    background-color: #d7efdf;
+    color: #15442c;
+}
+
 /* Rozšíř container kvůli novému sloupci Fakulta */
 .container {
     max-width: 1200px;

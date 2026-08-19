@@ -83,6 +83,10 @@ require_once '../includes/functions_edit_rocniky.php';
     <p class="result-count">
         Zobrazeno: <strong><?= count($rocnikyData) ?></strong> záznamů
     </p>
+    <p class="result-count">
+        Po změně počtu studentů nejdříve klikněte na <strong>Uložit změny</strong>.
+        Odkaz <strong>Nastavit cvičení</strong> potom ukáže předměty daného ročníku, u kterých se v Manuální editaci nastavuje velikost cvičících skupin.
+    </p>
 
     <!-- Editační formulář (POST) — filtry jsou v URL, data v POST body -->
     <?php
@@ -106,12 +110,13 @@ require_once '../includes/functions_edit_rocniky.php';
                 <th>Forma</th>
                 <th>Typ</th>
                 <th>Počet studentů</th>
+                <th>Cvičení</th>
             </tr>
             </thead>
             <tbody>
             <?php if (empty($rocnikyData)): ?>
                 <tr>
-                    <td colspan="7" class="no-results">Žádné záznamy neodpovídají zadaným filtrům.</td>
+                    <td colspan="8" class="no-results">Žádné záznamy neodpovídají zadaným filtrům.</td>
                 </tr>
             <?php else: ?>
                 <?php foreach ($rocnikyData as $row): ?>
@@ -125,6 +130,11 @@ require_once '../includes/functions_edit_rocniky.php';
                         <td>
                             <input type="number" name="pocetStudentu[<?= $row['id'] ?>]"
                                    value="<?= htmlspecialchars($row['pocetStudentu']) ?>" min="0">
+                        </td>
+                        <td>
+                            <a class="btn-cviceni" href="rocnik-cviceni.php?rocnik_id=<?= (int)$row['id'] ?>" target="_blank">
+                                Nastavit cvičení
+                            </a>
                         </td>
                     </tr>
                 <?php endforeach; ?>
