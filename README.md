@@ -3,7 +3,8 @@ Automatizace tvorby pracovnich uvazku
 
 Webova aplikace slouzi ke sprave studijnich predmetu, ucitelu a jejich uvazku.
 Umoznuje import dat z IS/STAG, automaticke predvyplneni prirazeni ucitelu,
-rucni upravy uvazku, evidenci nepokryte vyuky a export do XLSX.
+rucni upravy uvazku, spravu studentu v rocnicich, evidenci nepokryte vyuky
+a export jednotlivych i hromadnych vystupu do XLSX.
 
 Spusteni aplikace
 -----------------
@@ -28,6 +29,12 @@ Spusteni aplikace
 
    ```text
    http://localhost:8080
+   ```
+
+   Volitelne je dostupny take phpMyAdmin:
+
+   ```text
+   http://localhost:8081
    ```
 
 5. Pri prvnim spusteni kliknete na hlavni strance na tlacitko `Start`.
@@ -57,19 +64,27 @@ Prace s aplikaci
 
    - zadejte prihlasovaci udaje do IS/STAG,
    - vytvorte nebo vyberte aktivni verzi dat,
-   - nastavte akademicky rok,
-   - nactete strukturu fakulty,
-   - importujte data vybrane katedry.
+   - nastavte akademicky rok, semestr a vybranou katedru,
+   - nactete strukturu fakulty a potrebne ciselniky,
+   - importujte aktualni i historicka data z IS/STAG.
 
 3. Manualni editace
 
    V casti `Manualni editace` lze upravovat prirazeni ucitelu k predmetum,
-   menit podily, odebirat ucitele, kopirovat radky a resit nepokrytou vyuku.
+   menit podily, odebirat ucitele, mazat nebo kopirovat radky a resit
+   nepokrytou vyuku.
 
-4. Export
+4. Zkouseni a cviceni
 
-   V casti exportu lze vygenerovat XLSX soubor s pracovnim uvazkem vybraneho
-   vyucujiciho.
+   V casti `Zkouseni` se spravuji cinnosti A.2. V casti `Edit` lze pridat
+   externistu, upravit pocty studentu v rocnicich a rozdelit cviceni podle
+   poctu studentu.
+
+5. Export
+
+   Z prehledu ucitelu a detailu ucitele lze vygenerovat XLSX soubor s uvazkem
+   vybraneho vyucujiciho. Samostatne lze exportovat take prehled vytizenosti
+   a prehled nepokryte vyuky.
 
 Vytizenost vyucujicich
 ----------------------
@@ -88,7 +103,7 @@ Vytizenost vyucujicich
 Prehled vytizenosti
 -------------------
 
-Stranka `Prehled ucitele` zobrazuje vytizenost vsech vyucujicich s moznosti
+Stranka `Prehled ucitelu` zobrazuje vytizenost vsech vyucujicich s moznosti
 filtrovat podle fakulty, katedry a jmena. Pretizeni vyucujici jsou zvyrazneni.
 Cely prehled lze exportovat do XLSX tlacitkem `Export prehledu do Excelu`;
 export respektuje nastavene filtry a obsahuje rozpad na oblasti A.1 az D.
@@ -101,21 +116,3 @@ neni plne pokryta. Casti se posuzuji zvlast pro kazdou kombinaci typu vyuky
 a jazyka; cast je nepokryta, pokud nema prirazeneho vyucujiciho nebo soucet
 podilu nedosahuje 100 %. Prehled lze filtrovat podle fakulty, katedry,
 semestru, zkratky a nazvu a exportovat do XLSX.
-
-Testovani
----------
-
-Testy se spousteji rucne ze slozky `tests`:
-
-```bash
-# Bez pripojeni k databazi (ciste vypocetni funkce)
-php tests/workload-functions-test.php
-php tests/coverage-functions-test.php
-
-# Kontrola vypoctu v sablone XLSX
-php tests/export-template-smoke.php
-
-# Shoda webu a Excel exportu - vyzaduje bezici DB, spustit v kontejneru
-docker compose exec web php tests/workload-export-consistency-test.php
-docker compose exec web php tests/workload-export-consistency-test.php 42
-```
