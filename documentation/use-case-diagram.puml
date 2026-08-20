@@ -1,0 +1,96 @@
+@startuml
+title Případy užití systému ATPU
+
+top to bottom direction
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam nodesep 24
+skinparam ranksep 42
+skinparam usecase {
+  BackgroundColor #F8FAFC
+  BorderColor #1F2937
+  ArrowColor #475569
+}
+skinparam actor {
+  BorderColor #1F2937
+  BackgroundColor #FFFFFF
+}
+skinparam rectangle {
+  BorderColor #1F2937
+}
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+}
+
+' Aktér je společný pro všechny případy užití uvedené v kapitole 4.5 práce.
+actor "Uživatel systému\n(tajemník / pověřený pracovník)" as User
+
+rectangle "Aplikace ATPU" {
+  package "Příprava systému a import" {
+    usecase "Inicializovat\ndatabázi" as UC1
+    usecase "Spravovat\nverze dat" as UC2
+    usecase "Nastavit akademický\nrok, semestr a katedru" as UC3
+    usecase "Zadat a ověřit\npřihlašovací údaje\nIS/STAG" as UC4
+    usecase "Importovat data\nze STAG" as UC5
+    usecase "Sledovat průběh\nimportu v logu" as UC6
+
+    UC1 -[hidden]down- UC2
+    UC2 -[hidden]down- UC3
+    UC3 -[hidden]down- UC4
+    UC4 -[hidden]down- UC5
+    UC5 -[hidden]down- UC6
+  }
+
+  package "Tvorba a úprava úvazků" {
+    usecase "Automaticky\npřiřadit výuku" as UC7
+    usecase "Zadat počty\nstudentů v ročnících" as UC8
+    usecase "Nastavit cvičení\nstudijního ročníku" as UC9
+    usecase "Rozdělit cvičení podle\npočtu studentů" as UC10
+    usecase "Přidat externího\nvyučujícího" as UC11
+    usecase "Ručně upravit\npřiřazení A.1" as UC12
+    usecase "Hromadně odebrat\nnebo smazat záznamy" as UC13
+
+    UC7 -[hidden]down- UC8
+    UC8 -[hidden]down- UC9
+    UC9 -[hidden]down- UC10
+    UC10 -[hidden]down- UC11
+    UC11 -[hidden]down- UC12
+    UC12 -[hidden]down- UC13
+  }
+
+  package "Kontrola a výstupy" {
+    usecase "Spravovat zkoušení\nA.2" as UC14
+    usecase "Spravovat\nnepokrytou výuku" as UC15
+    usecase "Zobrazit přehled\nvyučujících" as UC16
+    usecase "Upravit detail\nučitele a úvazek" as UC17
+    usecase "Exportovat úvazky\na přehledy do XLSX" as UC18
+
+    UC14 -[hidden]down- UC15
+    UC15 -[hidden]down- UC16
+    UC16 -[hidden]down- UC17
+    UC17 -[hidden]down- UC18
+  }
+}
+
+User --> UC1
+User --> UC2
+User --> UC3
+User --> UC4
+User --> UC5
+User --> UC6
+User --> UC7
+User --> UC8
+User --> UC9
+User --> UC10
+User --> UC11
+User --> UC12
+User --> UC13
+User --> UC14
+User --> UC15
+User --> UC16
+User --> UC17
+User --> UC18
+
+@enduml

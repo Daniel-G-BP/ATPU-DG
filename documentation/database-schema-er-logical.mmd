@@ -1,0 +1,114 @@
+%% Logické ER schéma hlavních tabulek aplikace ATPU
+erDiagram
+    direction LR
+
+    VERZE ||--o{ NASTAVENI : konfiguruje
+    VERZE ||--o{ PRACOVISTE : obsahuje
+    VERZE ||--o{ TEACHERS : obsahuje
+    VERZE ||--o{ PREDMET : obsahuje
+    VERZE ||--o{ STUDIJNIPROGRAM : obsahuje
+    VERZE ||--o{ ROCNIKY_STUDIJNIHO_PROGRAMU : obsahuje
+
+    PRACOVISTE ||--o{ TEACHERS : zamestnava
+    PRACOVISTE ||--o{ PREDMET : garantuje
+
+    PREDMET ||--o{ UCITELPREDMETPRIRAZENI : ma_prirazeni
+    TEACHERS ||--o{ UCITELPREDMETPRIRAZENI : vyucuje
+    PREDMET ||--|| PREDMET_HODINY : ma_hodiny
+    PREDMET ||--o{ ZKOUSENI_PRIRAZENI : ma_zkouseni
+    TEACHERS ||--o{ ZKOUSENI_PRIRAZENI : zkousi
+
+    STUDIJNIPROGRAM ||--o{ OBOR : ma_obory
+    STUDIJNIPROGRAM ||--o{ ROCNIKY_STUDIJNIHO_PROGRAMU : ma_rocniky
+    OBOR ||--o{ STUDIJNI_PLAN : ma_plany
+    STUDIJNI_PLAN ||--o{ PLAN_PREDMET_OBSAZENOST : obsahuje_predmety
+    PREDMET ||--o{ PLAN_PREDMET_OBSAZENOST : je_v_planu
+
+    VERZE {
+        int IdVerze PK
+        string Nazev
+    }
+
+    NASTAVENI {
+        int IdNastaveni PK
+        int IdVerze FK
+    }
+
+    PRACOVISTE {
+        int idpracoviste PK
+        string zkratka
+        int IdVerze FK
+    }
+
+    TEACHERS {
+        int id PK
+        int ucitIdno
+        int idPracoviste FK
+        int IdVerze FK
+    }
+
+    PREDMET {
+        int id PK
+        string zkratka
+        int idPracoviste FK
+        int IdVerze FK
+    }
+
+    UCITELPREDMETPRIRAZENI {
+        int id PK
+        int predmetid FK
+        int teacherid FK
+        string typ
+        float podil
+        int max_pocet_studentu
+        int IdVerze FK
+    }
+
+    PREDMET_HODINY {
+        int id PK
+        int predmetId FK
+    }
+
+    ZKOUSENI_PRIRAZENI {
+        int id PK
+        int predmetid FK
+        int teacherid FK
+        int IdVerze FK
+    }
+
+    STUDIJNIPROGRAM {
+        int idstudijniprogram PK
+        int stprIdno
+        string nazev
+        int IdVerze FK
+    }
+
+    OBOR {
+        int id PK
+        int oborIdno
+        int stprIdno FK
+        int IdVerze FK
+    }
+
+    STUDIJNI_PLAN {
+        int id PK
+        int stplIdno
+        int oborIdno FK
+        int IdVerze FK
+    }
+
+    PLAN_PREDMET_OBSAZENOST {
+        int id PK
+        int stplIdno FK
+        string predmet_zkratka FK
+        int rocnik
+        int IdVerze FK
+    }
+
+    ROCNIKY_STUDIJNIHO_PROGRAMU {
+        int id PK
+        int stprIdno FK
+        int rocnik
+        int pocetStudentu
+        int idVerze FK
+    }
